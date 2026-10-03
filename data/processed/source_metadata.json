@@ -1,0 +1,34 @@
+{
+  "as_of_date": "2026-10-01",
+  "built_at_utc": "2026-10-03T11:55:18.804377+00:00",
+  "dataset": "City of Melbourne Building Permits",
+  "geospatial_source": {
+    "dataset": "City of Melbourne Street addresses",
+    "methods": {
+      "exact address point": "Mean of official points sharing the exact address key.",
+      "range centroid": "Mean of official address points within the permit number range on the same street and suburb.",
+      "street-number centroid": "Mean of official points sharing the street number when suffixes differ.",
+      "unmatched": "No coordinate assigned."
+    },
+    "source_bytes": 16065404,
+    "source_file": "street-addresses.csv",
+    "source_sha256": "acb4a2193341ae9fd60cdd7e98dda9f389f4cdc7ffe16393398e2dd01c52034a",
+    "source_url": "https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets/street-addresses/exports/csv?lang=en&timezone=Australia%2FMelbourne&use_labels=false&delimiter=%2C"
+  },
+  "source_bytes": 37506244,
+  "source_file": "building-permits.csv",
+  "source_sha256": "94b8e53e42e782bf177a6b75c2a1d97018536ac778374664ab0cd655c3400a6e",
+  "source_url": "https://data.melbourne.vic.gov.au/api/v2/catalog/datasets/building-permits/exports/csv?delimiter=%2C",
+  "summary": {
+    "analytic_permits": 74562,
+    "as_of_date": "2026-10-01",
+    "certificate_events": 154443,
+    "geocoded_permits": 73141,
+    "geocoded_rate": 0.9809420348166626,
+    "permit_addresses": 88437,
+    "permit_families": 74601,
+    "quarantine_issues": 1493,
+    "raw_rows": 184858,
+    "source_sha256": "94b8e53e42e782bf177a6b75c2a1d97018536ac778374664ab0cd655c3400a6e"
+  }
+}
