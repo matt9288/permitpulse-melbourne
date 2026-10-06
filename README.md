@@ -98,7 +98,9 @@ Build the processed data first, then run:
 streamlit run app.py
 ```
 
-The default dashboard period is 2018–2025 because the recent 2026 source partition appears incomplete. Filters apply consistently to the heat map, suburb opportunity profile, headline measures, charts, records table and CSV download. The profile compares the latest two complete calendar years inside the selected date range; when two complete years are unavailable, it shows selected-period measures without a growth claim. An in-dashboard metric glossary documents each measure, formula or rule, and its main interpretation limitation.
+The default dashboard period is 2018–2025 because the recent 2026 source partition appears incomplete. Filters apply consistently to the heat map, suburb opportunity profile, headline measures, charts, records table and CSV download. The profile compares the latest two complete calendar years inside the selected date range; when two complete years are unavailable, it shows selected-period measures without a growth claim.
+
+The estimated-cost section preserves the broad bands used by the sidebar and adds a drill-down for every positive range. Users can compare narrower bands by permit count or total source-reported estimated cost across the latest two complete calendar years. The detailed table also shows year-over-year changes and current-year median estimated cost. An in-dashboard metric glossary documents each measure, formula or rule, and its main interpretation limitation.
 
 The map does not use a paid geocoder. It joins permit addresses to the City of Melbourne's open street-address points. Exact street-number matches use official point locations; number ranges use the centroid of official address points within the range on the same street and suburb. Unmatched permits are not plotted.
 
@@ -107,6 +109,7 @@ For the 1 October 2026 discovery snapshot, the pipeline should reconcile 184,858
 The executed Sprint 1 evidence is recorded in [docs/SPRINT_1_VALIDATION.md](docs/SPRINT_1_VALIDATION.md).
 The Opportunity Explorer verification is recorded in [docs/PHASE_2_VALIDATION.md](docs/PHASE_2_VALIDATION.md).
 The hotspot-map verification is recorded in [docs/PHASE_3_MAP_VALIDATION.md](docs/PHASE_3_MAP_VALIDATION.md).
+The detailed cost-analysis verification is recorded in [docs/PHASE_4_COST_VALIDATION.md](docs/PHASE_4_COST_VALIDATION.md).
 
 ## Deployment
 
@@ -123,4 +126,5 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the public-file boundary, deplo
 - Public deployment is a later phase.
 - A record in the quarantine output is a data-review signal, not evidence of regulatory failure.
 - Estimated costs are source-reported estimates and must not be treated as realised expenditure.
+- Estimated-cost comparisons are nominal and are not adjusted for inflation or changing reporting practices.
 - Recent source periods may be incomplete because the register depends on upstream submissions.

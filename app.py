@@ -9,10 +9,14 @@ import plotly.express as px
 import streamlit as st
 
 from permitpulse.dashboard import (
+    DETAILED_COST_BANDS,
     DashboardFilters,
     apply_filters,
     complete_year_pair,
     cost_band_counts,
+    detailed_cost_band_values,
+    detailed_cost_comparison,
+    detailed_cost_summary,
     headline_metrics,
     load_parquet,
     metric_glossary,
@@ -379,12 +383,17 @@ with right:
     work_figure.update_xaxes(rangemode="tozero")
     st.plotly_chart(work_figure, width="stretch")
 
+st.subheader("Estimated-cost distribution")
+st.caption(
+    "The broad bands preserve the high-level market view. Use the detailed comparison below "
+    "to inspect narrower ranges without changing the dashboard's main filters."
+)
 costs = cost_band_counts(filtered)
 cost_figure = px.bar(
     costs,
     x="cost_band",
     y="permits",
-    title="Unique-permit distribution by estimated-cost band",
+    title="Unique-permit distribution by broad estimated-cost band",
     labels={"cost_band": "Estimated-cost band", "permits": "Unique permits"},
     color_discrete_sequence=[ACCENT_COLOUR],
     template="plotly_white",
@@ -392,6 +401,181 @@ cost_figure = px.bar(
 cost_figure.update_layout(margin=dict(l=20, r=20, t=55, b=20))
 cost_figure.update_yaxes(rangemode="tozero")
 st.plotly_chart(cost_figure, width="stretch")
+
+detail_options = [
+    band
+    for band in DETAILED_COST_BANDS
+    if not selected_cost_bands or band in selected_cost_bands
+]
+if detail_options:
+    st.markdown("#### Detailed cost-range comparison")
+    detail_control, measure_control = st.columns([2, 3])
+    default_detail = (
+        detail_options.index("$250k–$1m") if "$250k–$1m" in detail_options else 0
+    )
+    selected_detail_band = detail_control.selectbox(
+        "Broad range to investigate",
+        detail_options,
+        index=default_detail,
+        help="The selected range is divided into narrower, mutually exclusive cost bands.",
+    )
+    breakdown_measure = measure_control.radio(
+        "Comparison measure",
+        ["Permit count", "Total estimated cost"],
+        horizontal=True,
+    )
+    detail_order = DETAILED_COST_BANDS[selected_detail_band][1]
+
+    if year_pair:
+        cost_comparison = detailed_cost_comparison(
+            filtered,
+            selected_detail_band,
+            profile_year,
+            previous_year,
+        )
+        if breakdown_measure == "Permit count":
+            value_label = "Unique permits"
+            previous_column = "previous_permits"
+            current_column = "current_permits"
+        else:
+            value_label = "Total estimated cost"
+            previous_column = "previous_total_estimated_cost"
+            current_column = "current_total_estimated_cost"
+        chart_rows = pd.concat(
+            [
+                cost_comparison[["detailed_cost_band", previous_column]]
+                .rename(columns={previous_column: "value"})
+                .assign(issue_year=str(previous_year)),
+                cost_comparison[["detailed_cost_band", current_column]]
+                .rename(columns={current_column: "value"})
+                .assign(issue_year=str(profile_year)),
+            ],
+            ignore_index=True,
+        )
+        detail_figure = px.bar(
+            chart_rows,
+            x="detailed_cost_band",
+            y="value",
+            color="issue_year",
+            barmode="group",
+            title=(
+                f"{selected_detail_band} breakdown — {profile_year} versus {previous_year}"
+            ),
+            labels={
+                "detailed_cost_band": "Detailed estimated-cost band",
+                "value": value_label,
+                "issue_year": "Permit issue year",
+            },
+            category_orders={
+                "detailed_cost_band": detail_order,
+                "issue_year": [str(previous_year), str(profile_year)],
+            },
+            color_discrete_sequence=["#9AAFB8", ACCENT_COLOUR],
+            template="plotly_white",
+        )
+        detail_figure.update_layout(margin=dict(l=20, r=20, t=55, b=20))
+        detail_figure.update_yaxes(rangemode="tozero")
+        if breakdown_measure == "Total estimated cost":
+            detail_figure.update_yaxes(tickprefix="$", separatethousands=True)
+        st.plotly_chart(detail_figure, width="stretch")
+        st.caption(
+            "Comparison uses the latest two complete calendar years inside the selected date "
+            "range. All suburb, broad cost, work-category and search filters remain applied. "
+            "Estimated-cost totals are nominal source-reported values, not realised expenditure."
+        )
+        st.dataframe(
+            cost_comparison[
+                [
+                    "detailed_cost_band",
+                    "previous_permits",
+                    "current_permits",
+                    "permit_change",
+                    "previous_total_estimated_cost",
+                    "current_total_estimated_cost",
+                    "estimated_cost_change",
+                    "current_median_estimated_cost",
+                ]
+            ],
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "detailed_cost_band": "Detailed cost band",
+                "previous_permits": st.column_config.NumberColumn(
+                    f"{previous_year} permits", format="%d"
+                ),
+                "current_permits": st.column_config.NumberColumn(
+                    f"{profile_year} permits", format="%d"
+                ),
+                "permit_change": st.column_config.NumberColumn(
+                    "Permit change", format="percent"
+                ),
+                "previous_total_estimated_cost": st.column_config.NumberColumn(
+                    f"{previous_year} total estimated cost", format="$%.0f"
+                ),
+                "current_total_estimated_cost": st.column_config.NumberColumn(
+                    f"{profile_year} total estimated cost", format="$%.0f"
+                ),
+                "estimated_cost_change": st.column_config.NumberColumn(
+                    "Estimated-cost change", format="percent"
+                ),
+                "current_median_estimated_cost": st.column_config.NumberColumn(
+                    f"{profile_year} median estimated cost", format="$%.0f"
+                ),
+            },
+        )
+    else:
+        cost_detail = detailed_cost_summary(filtered, selected_detail_band)
+        value_column = (
+            "permits" if breakdown_measure == "Permit count" else "total_estimated_cost"
+        )
+        value_label = (
+            "Unique permits"
+            if breakdown_measure == "Permit count"
+            else "Total estimated cost"
+        )
+        detail_figure = px.bar(
+            cost_detail,
+            x="detailed_cost_band",
+            y=value_column,
+            title=f"{selected_detail_band} breakdown — selected period",
+            labels={
+                "detailed_cost_band": "Detailed estimated-cost band",
+                value_column: value_label,
+            },
+            category_orders={"detailed_cost_band": detail_order},
+            color_discrete_sequence=[ACCENT_COLOUR],
+            template="plotly_white",
+        )
+        detail_figure.update_layout(margin=dict(l=20, r=20, t=55, b=20))
+        detail_figure.update_yaxes(rangemode="tozero")
+        if breakdown_measure == "Total estimated cost":
+            detail_figure.update_yaxes(tickprefix="$", separatethousands=True)
+        st.plotly_chart(detail_figure, width="stretch")
+        st.caption(
+            "The selected date range does not contain two complete comparable calendar years. "
+            "This view therefore shows the detailed selected-period distribution without a "
+            "year-over-year claim."
+        )
+        st.dataframe(
+            cost_detail,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "detailed_cost_band": "Detailed cost band",
+                "permits": st.column_config.NumberColumn("Unique permits", format="%d"),
+                "total_estimated_cost": st.column_config.NumberColumn(
+                    "Total estimated cost", format="$%.0f"
+                ),
+                "median_estimated_cost": st.column_config.NumberColumn(
+                    "Median estimated cost", format="$%.0f"
+                ),
+            },
+        )
+else:
+    st.info(
+        "Detailed cost analysis is unavailable because the active broad cost filter contains "
+        "only non-positive or missing estimated costs."
+    )
 
 with st.expander("Metric definitions and responsible use"):
     st.caption(
@@ -424,6 +608,7 @@ record_columns = [
     "primary_address",
 ]
 records = filtered[record_columns].sort_values("permit_issue_date", ascending=False)
+records.insert(4, "detailed_cost_band", detailed_cost_band_values(records))
 st.dataframe(
     records,
     width="stretch",
@@ -433,6 +618,7 @@ st.dataframe(
         "permit_issue_date": st.column_config.DateColumn("Issue date", format="DD MMM YYYY"),
         "suburb": "Suburb",
         "cost_band": "Cost band",
+        "detailed_cost_band": "Detailed cost band",
         "estimated_cost": st.column_config.NumberColumn("Estimated cost", format="$%.0f"),
         "work_category_rule": "Work category",
         "desc_of_works": "Description",

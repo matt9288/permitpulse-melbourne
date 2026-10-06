@@ -30,7 +30,8 @@ def test_deployment_entrypoint_loads_from_repository_root() -> None:
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=30).run()
 
     assert not app.exception
-    assert len(app.get("plotly_chart")) == 5
+    assert len(app.get("plotly_chart")) == 6
+    assert any(selectbox.label == "Broad range to investigate" for selectbox in app.selectbox)
     assert any(
         expander.label == "Metric definitions and responsible use" for expander in app.expander
     )

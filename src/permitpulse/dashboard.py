@@ -9,6 +9,29 @@ import pandas as pd
 
 from permitpulse.pipeline import COST_BAND_ORDER, WORK_CATEGORY_ORDER
 
+DETAILED_COST_BANDS: dict[str, tuple[list[float], list[str]]] = {
+    "$1–$50k": (
+        [0, 10_000, 25_000, 50_000],
+        ["$1–$10k", "$10k–$25k", "$25k–$50k"],
+    ),
+    "$50k–$250k": (
+        [50_000, 100_000, 150_000, 200_000, 250_000],
+        ["$50k–$100k", "$100k–$150k", "$150k–$200k", "$200k–$250k"],
+    ),
+    "$250k–$1m": (
+        [250_000, 500_000, 750_000, 1_000_000],
+        ["$250k–$500k", "$500k–$750k", "$750k–$1m"],
+    ),
+    "$1m–$10m": (
+        [1_000_000, 2_500_000, 5_000_000, 7_500_000, 10_000_000],
+        ["$1m–$2.5m", "$2.5m–$5m", "$5m–$7.5m", "$7.5m–$10m"],
+    ),
+    "> $10m": (
+        [10_000_000, 25_000_000, 50_000_000, 100_000_000, float("inf")],
+        ["$10m–$25m", "$25m–$50m", "$50m–$100m", "> $100m"],
+    ),
+}
+
 
 @dataclass(frozen=True)
 class DashboardFilters:
@@ -94,6 +117,84 @@ def category_counts(
 
 def cost_band_counts(frame: pd.DataFrame) -> pd.DataFrame:
     return category_counts(frame, "cost_band", COST_BAND_ORDER)
+
+
+def detailed_cost_band_values(frame: pd.DataFrame) -> pd.Series:
+    """Return a reader-facing detailed cost band for each permit."""
+    values = pd.Series("Not detailed", index=frame.index, dtype="string")
+    for broad_band, (bins, labels) in DETAILED_COST_BANDS.items():
+        mask = frame["cost_band"].eq(broad_band)
+        values.loc[mask] = pd.cut(
+            frame.loc[mask, "estimated_cost"],
+            bins=bins,
+            labels=labels,
+            include_lowest=False,
+        ).astype("string")
+    return values
+
+
+def detailed_cost_summary(frame: pd.DataFrame, broad_band: str) -> pd.DataFrame:
+    """Summarise permit volume and estimated cost inside one broad cost band."""
+    if broad_band not in DETAILED_COST_BANDS:
+        raise ValueError(f"Detailed cost breakdown is unavailable for {broad_band!r}.")
+    _, labels = DETAILED_COST_BANDS[broad_band]
+    population = frame.loc[frame["cost_band"].eq(broad_band)].copy()
+    population["detailed_cost_band"] = detailed_cost_band_values(population)
+    summary = (
+        population.groupby("detailed_cost_band", as_index=False, observed=True)
+        .agg(
+            permits=("council_ref", "nunique"),
+            total_estimated_cost=("estimated_cost", "sum"),
+            median_estimated_cost=("estimated_cost", "median"),
+        )
+        .set_index("detailed_cost_band")
+        .reindex(labels)
+        .rename_axis("detailed_cost_band")
+        .reset_index()
+    )
+    summary["permits"] = summary["permits"].fillna(0).astype("int64")
+    summary["total_estimated_cost"] = summary["total_estimated_cost"].fillna(0.0)
+    return summary
+
+
+def detailed_cost_comparison(
+    frame: pd.DataFrame,
+    broad_band: str,
+    current_year: int,
+    previous_year: int,
+) -> pd.DataFrame:
+    """Compare detailed cost bands across two complete permit-issue years."""
+    current = detailed_cost_summary(
+        frame.loc[frame["permit_issue_date"].dt.year == current_year], broad_band
+    ).rename(
+        columns={
+            "permits": "current_permits",
+            "total_estimated_cost": "current_total_estimated_cost",
+            "median_estimated_cost": "current_median_estimated_cost",
+        }
+    )
+    previous = detailed_cost_summary(
+        frame.loc[frame["permit_issue_date"].dt.year == previous_year], broad_band
+    ).rename(
+        columns={
+            "permits": "previous_permits",
+            "total_estimated_cost": "previous_total_estimated_cost",
+            "median_estimated_cost": "previous_median_estimated_cost",
+        }
+    )
+    comparison = current.merge(previous, on="detailed_cost_band", validate="one_to_one")
+    comparison["permit_change"] = (
+        (comparison["current_permits"] - comparison["previous_permits"])
+        / comparison["previous_permits"]
+    ).where(comparison["previous_permits"] > 0)
+    comparison["estimated_cost_change"] = (
+        (
+            comparison["current_total_estimated_cost"]
+            - comparison["previous_total_estimated_cost"]
+        )
+        / comparison["previous_total_estimated_cost"]
+    ).where(comparison["previous_total_estimated_cost"] > 0)
+    return comparison
 
 
 def work_category_counts(frame: pd.DataFrame) -> pd.DataFrame:
@@ -400,10 +501,40 @@ def metric_glossary() -> pd.DataFrame:
             ),
         },
         {
-            "term": "Cost band",
-            "explanation": "A descriptive grouping of the source-reported estimated cost.",
-            "formula_or_rule": ("≤$0; $1–$50k; $50k–$250k; $250k–$1m; $1m–$10m; >$10m; Missing"),
+            "term": "Broad cost band",
+            "explanation": (
+                "The high-level grouping of source-reported estimated cost used by the sidebar "
+                "filter and overall distribution chart."
+            ),
+            "formula_or_rule": (
+                "≤$0; $1–$50k; $50k–$250k; $250k–$1m; $1m–$10m; >$10m; Missing"
+            ),
             "use_with_caution": "Bands do not indicate project profitability or procurement stage.",
+        },
+        {
+            "term": "Detailed cost band",
+            "explanation": (
+                "A narrower estimated-cost range inside one selected positive broad cost band."
+            ),
+            "formula_or_rule": (
+                "$1–$50k: 3 ranges; $50k–$250k: 4; $250k–$1m: 3; "
+                "$1m–$10m: 4; >$10m: 4"
+            ),
+            "use_with_caution": (
+                "The ranges are analytical groupings and are not official project classifications."
+            ),
+        },
+        {
+            "term": "Cost-band year-over-year change",
+            "explanation": (
+                "The change in permit count or total source-reported estimated cost for the same "
+                "detailed cost band across the latest two complete calendar years."
+            ),
+            "formula_or_rule": "(Current year ÷ previous year) − 1",
+            "use_with_caution": (
+                "Estimated-cost totals are nominal, outlier-sensitive and not realised "
+                "expenditure. No percentage is shown when the previous-year value is zero."
+            ),
         },
         {
             "term": "Permit hotspot",

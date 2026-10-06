@@ -3,10 +3,14 @@ from datetime import date
 import pandas as pd
 
 from permitpulse.dashboard import (
+    DETAILED_COST_BANDS,
     DashboardFilters,
     apply_filters,
     complete_year_pair,
     cost_band_counts,
+    detailed_cost_band_values,
+    detailed_cost_comparison,
+    detailed_cost_summary,
     headline_metrics,
     metric_glossary,
     monthly_activity,
@@ -66,6 +70,61 @@ def test_cost_band_counts_reconcile_to_selected_permits() -> None:
     assert counts.loc[counts["cost_band"] == ">$10m", "permits"].iloc[0] == 1
 
 
+def test_detailed_cost_bands_cover_each_positive_broad_band() -> None:
+    rows = []
+    reference_values = {
+        "$1–$50k": [1, 10_001, 25_001],
+        "$50k–$250k": [50_001, 100_001, 150_001, 200_001],
+        "$250k–$1m": [250_001, 500_001, 750_001],
+        "$1m–$10m": [1_000_001, 2_500_001, 5_000_001, 7_500_001],
+        "> $10m": [10_000_001, 25_000_001, 50_000_001, 100_000_001],
+    }
+    for broad_band, costs in reference_values.items():
+        for index, cost in enumerate(costs):
+            rows.append(
+                {
+                    "council_ref": f"{broad_band}-{index}",
+                    "cost_band": broad_band,
+                    "estimated_cost": cost,
+                }
+            )
+    frame = pd.DataFrame(rows)
+
+    detailed = detailed_cost_band_values(frame)
+
+    assert detailed.ne("Not detailed").all()
+    for broad_band, (_, expected_labels) in DETAILED_COST_BANDS.items():
+        summary = detailed_cost_summary(frame, broad_band)
+        assert summary["detailed_cost_band"].tolist() == expected_labels
+        assert summary["permits"].sum() == frame["cost_band"].eq(broad_band).sum()
+
+
+def test_detailed_cost_comparison_reconciles_years_and_changes() -> None:
+    frame = pd.DataFrame(
+        {
+            "council_ref": ["A", "B", "C", "D", "E"],
+            "permit_issue_date": pd.to_datetime(
+                ["2024-01-01", "2024-02-01", "2025-01-01", "2025-02-01", "2025-03-01"]
+            ),
+            "cost_band": ["$250k–$1m"] * 5,
+            "estimated_cost": [300_000, 600_000, 350_000, 400_000, 800_000],
+        }
+    )
+
+    comparison = detailed_cost_comparison(frame, "$250k–$1m", 2025, 2024)
+
+    first_band = comparison.loc[
+        comparison["detailed_cost_band"] == "$250k–$500k"
+    ].iloc[0]
+    assert first_band["previous_permits"] == 1
+    assert first_band["current_permits"] == 2
+    assert first_band["permit_change"] == 1
+    assert first_band["current_total_estimated_cost"] == 750_000
+    assert first_band["estimated_cost_change"] == 1.5
+    assert comparison["previous_permits"].sum() == 2
+    assert comparison["current_permits"].sum() == 3
+
+
 def test_map_points_reconcile_to_mapped_permits() -> None:
     frame = _permits()
 
@@ -111,6 +170,8 @@ def test_metric_glossary_covers_displayed_metrics_with_unique_terms() -> None:
         "Top category share",
         "Municipality benchmark",
         "Priority permit records",
+        "Detailed cost band",
+        "Cost-band year-over-year change",
         "Permit hotspot",
         "Mapped share",
     }
