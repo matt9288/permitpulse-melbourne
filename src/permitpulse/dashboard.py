@@ -32,6 +32,12 @@ DETAILED_COST_BANDS: dict[str, tuple[list[float], list[str]]] = {
     ),
 }
 
+DETAILED_COST_BAND_ORDER = [
+    "≤ $0",
+    *(label for _, labels in DETAILED_COST_BANDS.values() for label in labels),
+    "Missing",
+]
+
 
 @dataclass(frozen=True)
 class DashboardFilters:
@@ -121,7 +127,7 @@ def cost_band_counts(frame: pd.DataFrame) -> pd.DataFrame:
 
 def detailed_cost_band_values(frame: pd.DataFrame) -> pd.Series:
     """Return a reader-facing detailed cost band for each permit."""
-    values = pd.Series("Not detailed", index=frame.index, dtype="string")
+    values = frame["cost_band"].astype("string").copy()
     for broad_band, (bins, labels) in DETAILED_COST_BANDS.items():
         mask = frame["cost_band"].eq(broad_band)
         values.loc[mask] = pd.cut(
@@ -133,23 +139,28 @@ def detailed_cost_band_values(frame: pd.DataFrame) -> pd.Series:
     return values
 
 
-def detailed_cost_summary(frame: pd.DataFrame, broad_band: str) -> pd.DataFrame:
-    """Summarise permit volume and estimated cost inside one broad cost band."""
-    if broad_band not in DETAILED_COST_BANDS:
-        raise ValueError(f"Detailed cost breakdown is unavailable for {broad_band!r}.")
-    _, labels = DETAILED_COST_BANDS[broad_band]
-    population = frame.loc[frame["cost_band"].eq(broad_band)].copy()
-    population["detailed_cost_band"] = detailed_cost_band_values(population)
+def cost_distribution(frame: pd.DataFrame, detailed: bool = False) -> pd.DataFrame:
+    """Summarise permit volume and estimated cost by broad or detailed range."""
+    population = frame.copy()
+    if detailed:
+        population["cost_range"] = detailed_cost_band_values(population)
+        order = DETAILED_COST_BAND_ORDER
+    else:
+        population["cost_range"] = population["cost_band"].astype("string")
+        order = COST_BAND_ORDER
+    population["positive_estimated_cost"] = population["estimated_cost"].where(
+        population["estimated_cost"] > 0
+    )
     summary = (
-        population.groupby("detailed_cost_band", as_index=False, observed=True)
+        population.groupby("cost_range", as_index=False, observed=True)
         .agg(
             permits=("council_ref", "nunique"),
-            total_estimated_cost=("estimated_cost", "sum"),
-            median_estimated_cost=("estimated_cost", "median"),
+            total_estimated_cost=("positive_estimated_cost", "sum"),
+            median_estimated_cost=("positive_estimated_cost", "median"),
         )
-        .set_index("detailed_cost_band")
-        .reindex(labels)
-        .rename_axis("detailed_cost_band")
+        .set_index("cost_range")
+        .reindex(order)
+        .rename_axis("cost_range")
         .reset_index()
     )
     summary["permits"] = summary["permits"].fillna(0).astype("int64")
@@ -157,15 +168,17 @@ def detailed_cost_summary(frame: pd.DataFrame, broad_band: str) -> pd.DataFrame:
     return summary
 
 
-def detailed_cost_comparison(
+def cost_comparison(
     frame: pd.DataFrame,
-    broad_band: str,
     current_year: int,
     previous_year: int,
+    detailed: bool = False,
 ) -> pd.DataFrame:
-    """Compare detailed cost bands across two complete permit-issue years."""
-    current = detailed_cost_summary(
-        frame.loc[frame["permit_issue_date"].dt.year == current_year], broad_band
+    """Compare broad or detailed cost ranges across two permit-issue years."""
+    if current_year == previous_year:
+        raise ValueError("Comparison years must be different.")
+    current = cost_distribution(
+        frame.loc[frame["permit_issue_date"].dt.year == current_year], detailed
     ).rename(
         columns={
             "permits": "current_permits",
@@ -173,8 +186,8 @@ def detailed_cost_comparison(
             "median_estimated_cost": "current_median_estimated_cost",
         }
     )
-    previous = detailed_cost_summary(
-        frame.loc[frame["permit_issue_date"].dt.year == previous_year], broad_band
+    previous = cost_distribution(
+        frame.loc[frame["permit_issue_date"].dt.year == previous_year], detailed
     ).rename(
         columns={
             "permits": "previous_permits",
@@ -182,7 +195,7 @@ def detailed_cost_comparison(
             "median_estimated_cost": "previous_median_estimated_cost",
         }
     )
-    comparison = current.merge(previous, on="detailed_cost_band", validate="one_to_one")
+    comparison = current.merge(previous, on="cost_range", validate="one_to_one")
     comparison["permit_change"] = (
         (comparison["current_permits"] - comparison["previous_permits"])
         / comparison["previous_permits"]
@@ -228,19 +241,28 @@ def permit_map_points(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-def complete_year_pair(
+def complete_years(
     start_date: date,
     end_date: date,
     as_of_date: date,
-) -> tuple[int, int] | None:
-    """Return the latest two complete calendar years inside the selected range."""
-    eligible_years = [
+) -> list[int]:
+    """Return every complete calendar year inside the selected range."""
+    return [
         year
         for year in range(start_date.year, end_date.year + 1)
         if year < as_of_date.year
         and date(year, 1, 1) >= start_date
         and date(year, 12, 31) <= end_date
     ]
+
+
+def complete_year_pair(
+    start_date: date,
+    end_date: date,
+    as_of_date: date,
+) -> tuple[int, int] | None:
+    """Return the latest two consecutive complete years inside the selected range."""
+    eligible_years = complete_years(start_date, end_date, as_of_date)
     if len(eligible_years) < 2:
         return None
     current_year = max(eligible_years)
@@ -514,7 +536,8 @@ def metric_glossary() -> pd.DataFrame:
         {
             "term": "Detailed cost band",
             "explanation": (
-                "A narrower estimated-cost range inside one selected positive broad cost band."
+                "A narrower estimated-cost range used when the cost chart is reaggregated from "
+                "the broad view."
             ),
             "formula_or_rule": (
                 "$1–$50k: 3 ranges; $50k–$250k: 4; $250k–$1m: 3; "
@@ -525,12 +548,12 @@ def metric_glossary() -> pd.DataFrame:
             ),
         },
         {
-            "term": "Cost-band year-over-year change",
+            "term": "Cost-range year comparison",
             "explanation": (
                 "The change in permit count or total source-reported estimated cost for the same "
-                "detailed cost band across the latest two complete calendar years."
+                "cost range across two user-selected complete calendar years."
             ),
-            "formula_or_rule": "(Current year ÷ previous year) − 1",
+            "formula_or_rule": "(Focus year ÷ baseline year) − 1",
             "use_with_caution": (
                 "Estimated-cost totals are nominal, outlier-sensitive and not realised "
                 "expenditure. No percentage is shown when the previous-year value is zero."

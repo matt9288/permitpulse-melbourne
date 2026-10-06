@@ -100,7 +100,7 @@ streamlit run app.py
 
 The default dashboard period is 2018–2025 because the recent 2026 source partition appears incomplete. Filters apply consistently to the heat map, suburb opportunity profile, headline measures, charts, records table and CSV download. The profile compares the latest two complete calendar years inside the selected date range; when two complete years are unavailable, it shows selected-period measures without a growth claim.
 
-The estimated-cost section preserves the broad bands used by the sidebar and adds a drill-down for every positive range. Users can compare narrower bands by permit count or total source-reported estimated cost across the latest two complete calendar years. The detailed table also shows year-over-year changes and current-year median estimated cost. An in-dashboard metric glossary documents each measure, formula or rule, and its main interpretation limitation.
+The estimated-cost section reaggregates one chart between broad market ranges and the complete detailed breakdown. Users can compare permit count or total source-reported estimated cost for any two complete calendar years inside the active date range. The supporting table shows changes relative to the selected baseline year and the focus-year median estimated cost. An in-dashboard metric glossary documents each measure, formula or rule, and its main interpretation limitation.
 
 The map does not use a paid geocoder. It joins permit addresses to the City of Melbourne's open street-address points. Exact street-number matches use official point locations; number ranges use the centroid of official address points within the range on the same street and suburb. Unmatched permits are not plotted.
 

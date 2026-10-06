@@ -4,9 +4,9 @@
 
 The dashboard now answers:
 
-> How did permit volume and source-reported estimated cost change between the latest two complete calendar years within narrower project-cost ranges?
+> How did permit volume and source-reported estimated cost differ between any two complete calendar years at either a broad or detailed cost-range level?
 
-The existing broad estimated-cost bands remain unchanged for high-level filtering and distribution analysis. The new drill-down avoids forcing all ranges into one crowded chart.
+The existing broad estimated-cost bands remain unchanged for filtering. The cost chart now reaggregates directly between the broad view and the complete detailed breakdown, so users do not need to select one broad range from a separate drop-down.
 
 ## Detailed ranges
 
@@ -22,24 +22,23 @@ Non-positive and missing costs remain data-quality categories and are not subdiv
 
 ## Interaction and metric behaviour
 
-- The user selects one positive broad cost range for detailed analysis.
+- The user switches the same chart between broad and detailed cost ranges.
 - The chart switches between unique-permit count and total source-reported estimated cost.
-- When two complete calendar years are available, grouped bars compare the latest year with the preceding year.
-- The supporting table reports prior-year and current-year permit counts, permit-count change, total estimated costs, estimated-cost change and current-year median estimated cost.
+- When at least two complete calendar years are available, the focus-year and baseline-year selectors allow any two distinct years inside the active date range.
+- The supporting table reports baseline-year and focus-year permit counts, permit-count change, total estimated costs, estimated-cost change and focus-year median estimated cost.
 - If the selected date range does not contain two complete years, the dashboard shows selected-period detail without a year-over-year claim.
+- Non-positive and missing costs remain visible in the detailed aggregation, so the detailed and broad permit totals reconcile.
 - The detailed cost band is included in the record table and CSV export.
 
 ## Executed checks
 
-- `pytest`: 13 tests passed.
+- `pytest`: 16 tests passed.
 - `ruff check .`: passed.
-- Every positive broad band reconciled exactly to the sum of its detailed permit counts across the full analytical snapshot.
-- The 2024 and 2025 permit counts and total estimated costs reconciled between the detailed tables and their filtered source populations for all five positive broad ranges.
-- Streamlit application testing loaded six Plotly charts without exceptions.
-- The default detailed range loaded as `$250k–$1m` with permit count selected.
-- Changing the detailed range to `> $10m` and the measure to total estimated cost completed without exceptions; the detailed table reconciled to 276 permits in 2024 and 256 in 2025.
-- Applying the `$1–$50k` broad sidebar filter restricted the detail selector to that compatible range without an exception.
-- Restricting the date filter to calendar year 2025 switched to the selected-period table without a year-over-year claim and reconciled to 464 permits in the `$1–$50k` range.
+- Broad and detailed aggregations reconciled to the same permit total, including the non-positive and missing-cost categories.
+- Streamlit application testing loaded five Plotly charts without exceptions; the cost analysis now uses one chart instead of separate broad and detailed charts.
+- Changing the cost chart to the detailed aggregation, selecting 2023 as the focus year and 2021 as the baseline, and switching to total estimated cost completed without exceptions.
+- The selectable-year helper returned every complete year from 2018 through 2025 for the default dashboard period.
+- Restricting the date range to calendar year 2025 removed the year selectors and showed a selected-period distribution without a comparison claim.
 
 ## Responsible-use limits
 
