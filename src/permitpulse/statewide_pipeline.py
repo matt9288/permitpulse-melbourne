@@ -38,27 +38,33 @@ COLUMN_ALIASES = {
     "permit_issue_date": ["permit_date"],
     "report_year": ["BASIS_Month_Y"],
     "report_month_number": ["BASIS_Month_M"],
-    "levy_paid": ["Original_Levy_Paid__c"],
+    "levy_paid": ["Original_Levy_Paid__c", "Reported_Levy_amount"],
     "estimated_cost": ["Reported_Cost_of_works"],
-    "street_name": ["Site_street_name", "Cleaned_site_street_name"],
-    "suburb": ["site_town_suburb__c"],
-    "postcode": ["site_postcode__c"],
-    "municipality_code": ["Site_Municipality"],
+    "street_name": [
+        "Site_street_name",
+        "Cleaned_site_street_name",
+        "site_street_name__c",
+        "Site_street",
+    ],
+    "suburb": ["site_town_suburb__c", "Site_suburb"],
+    "postcode": ["site_postcode__c", "site_pcode"],
+    "municipality_code": ["Site_Municipality", "Municipal Name"],
     "municipality": ["Municipal Full Name"],
     "region": ["Region"],
     "sub_region": ["Sub_Region"],
-    "allotment_area": ["Allotment_Area__c"],
-    "existing_dwellings": ["Number_of_Existing_Dwellings__c"],
+    "allotment_area": ["Allotment_Area__c", "Allotment_Area"],
+    "existing_dwellings": ["Number_of_Existing_Dwellings__c", "dwellings_before_work"],
     "new_dwellings": ["Number_of_New_Dwellings__c"],
-    "storeys": ["Number_of_Storeys__c"],
-    "dwellings_demolished": ["Number_of_Dwellings_Demolished__c"],
-    "floor_area": ["Total_Floor_Area__c"],
-    "application_date": ["Building_Permit_Application_Date__c"],
-    "project_total_estimated_cost": ["Total_Estimated_Cost_of_Works__c"],
+    "legacy_dwellings_after": ["dwellings_after_work"],
+    "storeys": ["Number_of_Storeys__c", "Number_of_storeys"],
+    "dwellings_demolished": ["Number_of_Dwellings_Demolished__c", "number_demolished"],
+    "floor_area": ["Total_Floor_Area__c", "Floor_area"],
+    "application_date": ["Building_Permit_Application_Date__c", "Permit_app_date"],
+    "project_total_estimated_cost": ["Total_Estimated_Cost_of_Works__c", "est_cost_project"],
     "building_use": ["BASIS_Building_Use"],
     "nature_of_work_code": ["BASIS_NOW"],
-    "bca_class": ["BASIS_BCA"],
-    "ownership_sector_code": ["BASIS_Ownership_Sector"],
+    "bca_class": ["BASIS_BCA", "BASIS_ BCA"],
+    "ownership_sector_code": ["BASIS_Ownership_Sector", "BASIS_OwnershipSector"],
 }
 
 REQUIRED_CANONICAL_COLUMNS = {
@@ -70,7 +76,6 @@ REQUIRED_CANONICAL_COLUMNS = {
     "suburb",
     "municipality",
     "region",
-    "building_use",
     "nature_of_work_code",
     "bca_class",
 }
@@ -79,6 +84,22 @@ OFFICIAL_ANNUAL_TOTALS = {
     2024: {"records": 100_400, "reported_cost": 49_990_056_504.0},
     2025: {"records": 100_710, "reported_cost": 57_750_334_113.0},
 }
+
+DASHBOARD_COLUMNS = [
+    "record_id",
+    "report_year",
+    "report_month",
+    "municipality",
+    "municipality_map_name",
+    "region",
+    "suburb",
+    "estimated_cost",
+    "cost_band",
+    "building_use",
+    "nature_of_work",
+    "new_dwellings",
+    "dwellings_demolished",
+]
 
 
 class StatewideSchemaError(ValueError):
@@ -111,6 +132,24 @@ def _normalise_text(series: pd.Series, upper: bool = False) -> pd.Series:
     return values.str.upper() if upper else values
 
 
+def _excel_engine(path: Path) -> str:
+    return "pyxlsb" if path.suffix.lower() == ".xlsb" else "calamine"
+
+
+def _parse_excel_date(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    plausible_serial = numeric.between(20_000, 80_000)
+    datetime_values = series.map(lambda value: isinstance(value, (date, datetime, pd.Timestamp)))
+    text_values = numeric.isna() & series.notna() & ~datetime_values
+    parsed = pd.Series(pd.NaT, index=series.index, dtype="datetime64[ns]")
+    parsed.loc[datetime_values] = pd.to_datetime(series.loc[datetime_values], errors="coerce")
+    parsed.loc[text_values] = pd.to_datetime(series.loc[text_values], errors="coerce")
+    parsed.loc[plausible_serial] = pd.to_datetime(
+        numeric.loc[plausible_serial], unit="D", origin="1899-12-30", errors="coerce"
+    )
+    return parsed
+
+
 def municipality_map_name(value: object) -> str | None:
     """Convert BPC municipality labels to Vicmap LGA feature names."""
     if pd.isna(value):
@@ -122,14 +161,18 @@ def municipality_map_name(value: object) -> str | None:
         "MT BAW BAW ALPINE RESORT": "MOUNT BAW BAW ALPINE RESORT (UNINC)",
         "MT BULLER ALPINE RESORT": "MOUNT BULLER ALPINE RESORT (UNINC)",
         "MT HOTHAM ALPINE RESORT": "MOUNT HOTHAM ALPINE RESORT (UNINC)",
+        "MT STIRLING ALPINE RESORT": "MOUNT STIRLING ALPINE RESORT (UNINC)",
+        "LAKE MOUNTAIN ALPINE RESORT": "LAKE MOUNTAIN ALPINE RESORT (UNINC)",
+        "MORELAND": "MERRI-BEK",
     }
     return aliases.get(name, name)
 
 
 def _find_data_sheet(path: Path) -> str:
-    workbook = pd.ExcelFile(path, engine="calamine")
+    engine = _excel_engine(path)
+    workbook = pd.ExcelFile(path, engine=engine)
     for sheet_name in workbook.sheet_names:
-        sample = pd.read_excel(path, sheet_name=sheet_name, engine="calamine", nrows=2)
+        sample = pd.read_excel(path, sheet_name=sheet_name, engine=engine, nrows=2)
         if {"permit_date", "BASIS_Month_Y", "Reported_Cost_of_works"} <= set(sample.columns):
             return sheet_name
     raise StatewideSchemaError(f"No building-permit data sheet found in {path.name}.")
@@ -162,7 +205,8 @@ def _cost_band(cost: pd.Series) -> pd.Series:
 def read_statewide_workbook(path: Path) -> tuple[pd.DataFrame, dict[str, object]]:
     path = path.resolve()
     sheet_name = _find_data_sheet(path)
-    source = pd.read_excel(path, sheet_name=sheet_name, engine="calamine")
+    engine = _excel_engine(path)
+    source = pd.read_excel(path, sheet_name=sheet_name, engine=engine)
     source.columns = [str(column).strip() for column in source.columns]
     resolved = _resolve_columns(source.columns.tolist())
 
@@ -173,8 +217,8 @@ def read_statewide_workbook(path: Path) -> tuple[pd.DataFrame, dict[str, object]
         if canonical not in frame:
             frame[canonical] = pd.NA
 
-    frame["permit_issue_date"] = pd.to_datetime(frame["permit_issue_date"], errors="coerce")
-    frame["application_date"] = pd.to_datetime(frame["application_date"], errors="coerce")
+    frame["permit_issue_date"] = _parse_excel_date(frame["permit_issue_date"])
+    frame["application_date"] = _parse_excel_date(frame["application_date"])
     for column in [
         "report_year",
         "report_month_number",
@@ -194,16 +238,31 @@ def read_statewide_workbook(path: Path) -> tuple[pd.DataFrame, dict[str, object]
     ]:
         frame[column] = pd.to_numeric(frame[column], errors="coerce").astype("Float64")
 
+    if "new_dwellings" in resolved:
+        new_dwellings_method = f"Source field {resolved['new_dwellings']}"
+    else:
+        frame["new_dwellings"] = pd.Series(pd.NA, index=frame.index, dtype="Int64")
+        new_dwellings_method = (
+            "Unavailable; legacy before/after dwelling fields are not directly comparable"
+        )
+
     frame["street_name"] = _normalise_text(frame["street_name"])
     frame["suburb"] = _normalise_text(frame["suburb"], upper=True)
     frame["postcode"] = _normalise_text(frame["postcode"]).str.replace(r"\.0$", "", regex=True)
-    frame["municipality"] = _normalise_text(frame["municipality"])
+    frame["municipality"] = (
+        _normalise_text(frame["municipality"])
+        .str.replace(r"\s+,", ",", regex=True)
+        .str.replace(r",\s*", ", ", regex=True)
+        .replace({"Moreland, City of": "Merri-bek, City of"})
+    )
     frame["municipality_map_name"] = (
         frame["municipality"].map(municipality_map_name).astype("string")
     )
     frame["region"] = _normalise_text(frame["region"])
     frame["sub_region"] = _normalise_text(frame["sub_region"])
-    frame["building_use"] = _normalise_text(frame["building_use"])
+    frame["building_use"] = _normalise_text(frame["building_use"]).fillna(
+        "Unavailable in source year"
+    )
     frame["bca_class"] = _normalise_text(frame["bca_class"])
     frame["nature_of_work_code"] = _normalise_text(frame["nature_of_work_code"]).str.replace(
         r"\.0$", "", regex=True
@@ -282,6 +341,9 @@ def read_statewide_workbook(path: Path) -> tuple[pd.DataFrame, dict[str, object]
         "columns": len(source.columns),
         "report_years": report_years,
         "street_column": resolved["street_name"],
+        "excel_engine": engine,
+        "building_use_available": "building_use" in resolved,
+        "new_dwellings_method": new_dwellings_method,
     }
     return frame[ordered_columns], metadata
 
@@ -353,6 +415,24 @@ def _quality_results(frame: pd.DataFrame) -> pd.DataFrame:
             int(frame["municipality"].isna().sum()),
             "high",
             "Municipality is missing, preventing local comparison and mapping.",
+        ),
+        (
+            "building_use_unavailable",
+            int(frame["building_use"].eq("Unavailable in source year").sum()),
+            "medium",
+            "Building use is not published in the 2018 workbook and is shown as unavailable.",
+        ),
+        (
+            "new_dwellings_source_unavailable",
+            int(frame["report_year"].isin([2018, 2019]).sum()),
+            "medium",
+            "A comparable new-dwellings field is unavailable in the 2018 and 2019 workbooks.",
+        ),
+        (
+            "missing_new_dwellings_when_available",
+            int((~frame["report_year"].isin([2018, 2019]) & frame["new_dwellings"].isna()).sum()),
+            "medium",
+            "New dwellings is blank in a workbook that otherwise publishes the field.",
         ),
     ]
     rows: list[dict[str, object]] = []
@@ -429,7 +509,7 @@ def build_statewide_pipeline(
     quality = _quality_results(records)
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
-    _write_parquet(records, output_dir / "analytic_permits.parquet")
+    _write_parquet(records[DASHBOARD_COLUMNS], output_dir / "analytic_permits.parquet")
     _write_parquet(quality, output_dir / "data_quality_results.parquet")
 
     report_years = tuple(sorted(records["report_year"].dropna().astype(int).unique().tolist()))
@@ -488,6 +568,16 @@ def build_statewide_pipeline(
             "aggregated to municipality boundaries.",
             "Reported cost is an estimate, not realised expenditure, contract value or revenue.",
             "Data quality depends on information submitted by building surveyors to the regulator.",
+            "Building use is unavailable in the 2018 workbook.",
+            "A comparable new-dwellings field is unavailable in the 2018 and 2019 workbooks.",
+            (
+                "The current Vicmap boundary has no Delatite feature because that municipality "
+                "ceased; those historical records are retained but not mapped."
+            ),
+            (
+                "Historical Moreland labels are normalised to Merri-bek so municipality "
+                "year comparisons remain continuous across the council rename."
+            ),
         ],
     }
     (output_dir / "source_metadata.json").write_text(

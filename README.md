@@ -2,7 +2,7 @@
 
 PermitPulse Victoria is an open-data portfolio prototype for exploring statewide building-permit activity. It converts annual Building and Plumbing Commission (BPC) workbooks into a consistent analytical dataset and an interactive Streamlit dashboard.
 
-The current public snapshot covers the 2024 and 2025 BPC reporting years. It contains 201,110 source records across 83 local-government and alpine-resort reporting areas.
+The current public snapshot covers the 2018–2025 BPC reporting years. It contains 871,267 source records across 87 comparable municipality and alpine-resort groups.
 
 ## Business problem
 
@@ -39,6 +39,8 @@ Raw workbooks are not committed. The repository includes only the processed publ
 - Reported cost is an estimate, not realised expenditure, contract value, revenue or current market value.
 - The source covers issued permit activity. It does not contain refused or not-granted applications.
 - The statewide source has street names but no street numbers or coordinates. The map is therefore aggregated to official municipality boundaries.
+- Building use is unavailable in the 2018 workbook. The dashboard preserves that gap rather than substituting another field.
+- New dwellings use the published field from 2020 onward. The legacy 2018–2019 fields are not directly comparable, so those years are shown as unavailable.
 
 ## Technology
 
@@ -65,13 +67,19 @@ Download the annual BPC XLSB files through the official DataVic page, then run:
 
 ```bash
 permitpulse build-statewide \
+  --input /path/to/VBA-DataVic-Building-Permits-2018.xlsb \
+  --input /path/to/VBA-DataVic-Building-Permits-2019.xlsb \
+  --input /path/to/VBA-DataVic-Building-Permits-2020.xlsb \
+  --input /path/to/VBA-DataVic-Building-Permits-2021-Dec.xlsb \
+  --input /path/to/December-2022-Raw-data.xlsb \
+  --input /path/to/20240067-Raw-Data-December-2023.xlsb \
   --input /path/to/VBA-DataVic-Building-Permits-2024-December.xlsb \
   --input /path/to/20260079-Rawdata-December-2025.xlsb \
   --output-dir data/processed \
   --as-of-date 2026-10-07
 ```
 
-Repeat `--input` for each annual workbook. The pipeline detects the data sheet, handles the known 2024/2025 street-column schema difference, validates required fields and records file checksums.
+Repeat `--input` for each annual workbook. The pipeline detects the data sheet, handles known schema differences, converts legacy Excel date serials, validates required fields and records file checksums.
 
 The earlier City of Melbourne build commands remain in the codebase for reproducibility of the first project phase, but the deployed application uses the statewide build.
 
@@ -96,10 +104,14 @@ The current validation results are documented in [docs/STATEWIDE_VALIDATION.md](
 
 ## Current limitations
 
-- Only 2024 and 2025 are in the current statewide runtime snapshot. The pipeline supports additional annual workbooks, but earlier years have not yet been loaded and reconciled.
+- Building-use analysis cannot compare 2018 with later years because the 2018 workbook does not publish that field.
+- New-dwelling analysis is unavailable for 2018–2019 because the legacy before/after fields do not reconcile safely to the later definition.
+- New-dwelling values are also blank for some 2020–2025 records; the dashboard reports coverage rather than treating blanks as zero.
 - No permit ID means the dashboard cannot prove permit uniqueness or safely deduplicate duplicate-looking rows.
 - No refusal data means the dashboard cannot measure approval probability or refusal risk.
 - Municipality shading can hide within-LGA variation and should not be treated as an address hotspot.
+- Ninety records use the ceased Delatite municipality label and cannot be placed on the current Vicmap boundary layer.
+- Historical Moreland records are grouped under Merri-bek so year comparisons remain continuous across the council rename.
 - Annual values are nominal and not adjusted for inflation or reporting-practice changes.
 - Data quality depends on information submitted by building surveyors to the regulator.
 - The free Carto basemap requires an internet connection in the viewer; no API key is required.

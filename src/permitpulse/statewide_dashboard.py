@@ -43,8 +43,6 @@ def apply_statewide_filters(frame: pd.DataFrame, filters: StatewideFilters) -> p
             + " "
             + frame["suburb"].fillna("")
             + " "
-            + frame["street_name"].fillna("")
-            + " "
             + frame["nature_of_work"].fillna("")
             + " "
             + frame["building_use"].fillna("")
@@ -55,12 +53,16 @@ def apply_statewide_filters(frame: pd.DataFrame, filters: StatewideFilters) -> p
 
 def headline_metrics(frame: pd.DataFrame) -> dict[str, float | int | None]:
     positive_costs = frame.loc[frame["estimated_cost"] > 0, "estimated_cost"]
+    available_new_dwellings = frame["new_dwellings"].dropna()
     return {
         "records": len(frame),
         "reported_cost": float(frame["estimated_cost"].sum()),
         "median_positive_cost": float(positive_costs.median()) if len(positive_costs) else None,
         "municipalities": int(frame["municipality"].nunique()),
-        "new_dwellings": int(frame["new_dwellings"].fillna(0).sum()),
+        "new_dwellings": (
+            int(available_new_dwellings.sum()) if len(available_new_dwellings) else None
+        ),
+        "new_dwellings_coverage": float(frame["new_dwellings"].notna().mean()),
         "high_value_share": float((frame["estimated_cost"] > 10_000_000).mean())
         if len(frame)
         else 0.0,
@@ -155,8 +157,8 @@ def municipality_summary(
         total_reported_cost=("estimated_cost", "sum"),
         median_reported_cost=("positive_cost", "median"),
         high_value_records=("high_value", "sum"),
-        new_dwellings=("new_dwellings", "sum"),
-        dwellings_demolished=("dwellings_demolished", "sum"),
+        new_dwellings=("new_dwellings", lambda values: values.sum(min_count=1)),
+        dwellings_demolished=("dwellings_demolished", lambda values: values.sum(min_count=1)),
     )
     summary["high_value_share"] = summary["high_value_records"] / summary["focus_records"]
     if baseline_year is not None:
@@ -185,7 +187,7 @@ def municipality_map_summary(frame: pd.DataFrame) -> pd.DataFrame:
         .agg(
             records=("record_id", "size"),
             reported_cost=("estimated_cost", "sum"),
-            new_dwellings=("new_dwellings", "sum"),
+            new_dwellings=("new_dwellings", lambda values: values.sum(min_count=1)),
         )
     )
 
@@ -270,12 +272,11 @@ def metric_glossary() -> pd.DataFrame:
             },
             {
                 "term": "New dwellings",
-                "explanation": (
-                    "Sum of source-reported new dwellings attached to filtered permit records."
-                ),
-                "formula_or_rule": "Sum(Number_of_New_Dwellings__c)",
+                "explanation": "New dwellings attached to filtered permit records.",
+                "formula_or_rule": "2020 onwards: sum(Number_of_New_Dwellings__c)",
                 "use_with_caution": (
-                    "It is planned activity in permit records, not confirmed completions."
+                    "Unavailable for 2018–2019. From 2020 it is planned activity in permit "
+                    "records, not confirmed completions."
                 ),
             },
             {

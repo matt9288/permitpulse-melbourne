@@ -1,7 +1,7 @@
 {
   "project_scope": "Victoria",
   "as_of_date": "2026-10-07",
-  "built_at_utc": "2026-10-07T00:40:37.041513+00:00",
+  "built_at_utc": "2026-10-07T10:16:53.810543+00:00",
   "source_file": "BPC annual building-permit workbooks",
   "source_dataset": "Building Permit Activity Data",
   "source_url": "https://discover.data.vic.gov.au/dataset/building-permit-activity-data",
@@ -11,6 +11,90 @@
   "primary_period": "BPC levy reporting month and year. Permit issue date is retained separately and may fall outside the reporting year.",
   "sources": [
     {
+      "source_file": "VBA-DataVic-Building-Permits-2018.xlsb",
+      "source_sha256": "b778865baeed8a1ec0f066581c25e0a46b85971bd8a7676bf94fea3aacd5cc29",
+      "sheet_name": "Sheet1",
+      "rows": 113287,
+      "columns": 41,
+      "report_years": [
+        2018
+      ],
+      "street_column": "Site_street",
+      "excel_engine": "pyxlsb",
+      "building_use_available": false,
+      "new_dwellings_method": "Unavailable; legacy before/after dwelling fields are not directly comparable"
+    },
+    {
+      "source_file": "VBA-DataVic-Building-Permits-2019.xlsb",
+      "source_sha256": "83bd3cc8b04e0e6483e63ae24abe04fd3378649bbc4822782bafb06bd6d87a4d",
+      "sheet_name": "Data",
+      "rows": 101988,
+      "columns": 41,
+      "report_years": [
+        2019
+      ],
+      "street_column": "Site_street",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Unavailable; legacy before/after dwelling fields are not directly comparable"
+    },
+    {
+      "source_file": "VBA-DataVic-Building-Permits-2020.xlsb",
+      "source_sha256": "c612f21c8ba7a586b7bf70424aa04fc2e9ec643d9213fc9ca57e31fc4851045e",
+      "sheet_name": "Sheet1",
+      "rows": 113430,
+      "columns": 37,
+      "report_years": [
+        2020
+      ],
+      "street_column": "site_street_name__c",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Source field Number_of_New_Dwellings__c"
+    },
+    {
+      "source_file": "VBA-DataVic-Building-Permits-2021-Dec.xlsb",
+      "source_sha256": "8cb3fdbe888bd6afbfc57adbfbc6d0e4dbc3d1a338164fbd0baa246bc771ba92",
+      "sheet_name": "Sheet1",
+      "rows": 127792,
+      "columns": 37,
+      "report_years": [
+        2021
+      ],
+      "street_column": "site_street_name__c",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Source field Number_of_New_Dwellings__c"
+    },
+    {
+      "source_file": "December-2022-Raw-data.xlsb",
+      "source_sha256": "220af8069b0bc6e1ae55166bb2c09909d6d9a1315a4a5ec25af6bd87c273079a",
+      "sheet_name": "data",
+      "rows": 113625,
+      "columns": 37,
+      "report_years": [
+        2022
+      ],
+      "street_column": "site_street_name__c",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Source field Number_of_New_Dwellings__c"
+    },
+    {
+      "source_file": "20240067-Raw-Data-December-2023.xlsb",
+      "source_sha256": "7f483eace6ff693c5345b85209654f23b02cacb34799abba65caee0e290585e5",
+      "sheet_name": "Data",
+      "rows": 100035,
+      "columns": 37,
+      "report_years": [
+        2023
+      ],
+      "street_column": "site_street_name__c",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Source field Number_of_New_Dwellings__c"
+    },
+    {
       "source_file": "VBA-DataVic-Building-Permits-2024-December.xlsb",
       "source_sha256": "3e922586dceef2cecb693f126ebf34d73489c4aa1353486c174e428f319b86da",
       "sheet_name": "Data",
@@ -19,7 +103,10 @@
       "report_years": [
         2024
       ],
-      "street_column": "Cleaned_site_street_name"
+      "street_column": "Cleaned_site_street_name",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Source field Number_of_New_Dwellings__c"
     },
     {
       "source_file": "20260079-Rawdata-December-2025.xlsb",
@@ -30,7 +117,10 @@
       "report_years": [
         2025
       ],
-      "street_column": "Site_street_name"
+      "street_column": "Site_street_name",
+      "excel_engine": "pyxlsb",
+      "building_use_available": true,
+      "new_dwellings_method": "Source field Number_of_New_Dwellings__c"
     }
   ],
   "geospatial_source": {
@@ -41,15 +131,51 @@
     "geometry_note": "Official polygons simplified to 0.002 degrees for dashboard performance."
   },
   "summary": {
-    "records": 201110,
+    "records": 871267,
     "report_years": [
+      2018,
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
       2024,
       2025
     ],
-    "municipalities": 83,
-    "suburbs": 2722,
-    "reported_cost": 107740390617.0,
+    "municipalities": 87,
+    "suburbs": 3942,
+    "reported_cost": 366878237624.0,
     "annual": [
+      {
+        "report_year": 2018,
+        "records": 113287,
+        "reported_cost": 39610817091.0
+      },
+      {
+        "report_year": 2019,
+        "records": 101988,
+        "reported_cost": 38284048987.0
+      },
+      {
+        "report_year": 2020,
+        "records": 113430,
+        "reported_cost": 40810014295.0
+      },
+      {
+        "report_year": 2021,
+        "records": 127792,
+        "reported_cost": 44635012065.0
+      },
+      {
+        "report_year": 2022,
+        "records": 113625,
+        "reported_cost": 47496953575.0
+      },
+      {
+        "report_year": 2023,
+        "records": 100035,
+        "reported_cost": 48301000994.0
+      },
       {
         "report_year": 2024,
         "records": 100400,
@@ -67,6 +193,10 @@
     "The source contains issued permit activity, not refused or not-granted applications.",
     "The source has street names but no street numbers or coordinates; the map is aggregated to municipality boundaries.",
     "Reported cost is an estimate, not realised expenditure, contract value or revenue.",
-    "Data quality depends on information submitted by building surveyors to the regulator."
+    "Data quality depends on information submitted by building surveyors to the regulator.",
+    "Building use is unavailable in the 2018 workbook.",
+    "A comparable new-dwellings field is unavailable in the 2018 and 2019 workbooks.",
+    "The current Vicmap boundary has no Delatite feature because that municipality ceased; those historical records are retained but not mapped.",
+    "Historical Moreland labels are normalised to Merri-bek so municipality year comparisons remain continuous across the council rename."
   ]
 }

@@ -139,7 +139,14 @@ kpi_columns[0].metric("Permit records", f"{metrics['records']:,}")
 kpi_columns[1].metric("Total reported cost", currency(metrics["reported_cost"]))
 kpi_columns[2].metric("Median positive cost", currency(metrics["median_positive_cost"]))
 kpi_columns[3].metric("Municipalities", f"{metrics['municipalities']:,}")
-kpi_columns[4].metric("Reported new dwellings", f"{metrics['new_dwellings']:,}")
+kpi_columns[4].metric(
+    "New dwellings",
+    (f"{metrics['new_dwellings']:,}" if metrics["new_dwellings"] is not None else "Unavailable"),
+    help=(
+        f"Comparable source field coverage: {metrics['new_dwellings_coverage']:.1%} of "
+        "filtered records. The field is unavailable for 2018–2019."
+    ),
+)
 
 st.subheader("Statewide permit hotspots")
 map_measure = st.radio(
@@ -155,34 +162,37 @@ map_data = municipality_map_summary(filtered)
 boundary_names = {feature["properties"]["lga_name"] for feature in boundaries.get("features", [])}
 map_data["is_mapped"] = map_data["municipality_map_name"].isin(boundary_names)
 mapped = map_data.loc[map_data["is_mapped"]].copy()
-map_figure = px.choropleth_map(
-    mapped,
-    geojson=boundaries,
-    locations="municipality_map_name",
-    featureidkey="properties.lga_name",
-    color=value_column,
-    hover_name="municipality",
-    hover_data={
-        "records": ":,",
-        "reported_cost": ":$,.0f",
-        "new_dwellings": ":,",
-        "municipality_map_name": False,
-    },
-    labels={
-        "records": "Permit records",
-        "reported_cost": "Reported cost",
-        "new_dwellings": "New dwellings",
-    },
-    color_continuous_scale="YlOrRd",
-    map_style="carto-positron",
-    center={"lat": -36.9, "lon": 144.7},
-    zoom=4.7,
-    opacity=0.75,
-    height=650,
-    title=f"Municipality intensity by {value_label.lower()}",
-)
-map_figure.update_layout(margin=dict(l=0, r=0, t=55, b=0))
-st.plotly_chart(map_figure, width="stretch")
+if mapped[value_column].notna().any():
+    map_figure = px.choropleth_map(
+        mapped,
+        geojson=boundaries,
+        locations="municipality_map_name",
+        featureidkey="properties.lga_name",
+        color=value_column,
+        hover_name="municipality",
+        hover_data={
+            "records": ":,",
+            "reported_cost": ":$,.0f",
+            "new_dwellings": ":,",
+            "municipality_map_name": False,
+        },
+        labels={
+            "records": "Permit records",
+            "reported_cost": "Reported cost",
+            "new_dwellings": "New dwellings",
+        },
+        color_continuous_scale="YlOrRd",
+        map_style="carto-positron",
+        center={"lat": -36.9, "lon": 144.7},
+        zoom=4.7,
+        opacity=0.75,
+        height=650,
+        title=f"Municipality intensity by {value_label.lower()}",
+    )
+    map_figure.update_layout(margin=dict(l=0, r=0, t=55, b=0))
+    st.plotly_chart(map_figure, width="stretch")
+else:
+    st.info(f"{value_label} data is unavailable for the selected reporting period.")
 mapped_records = int(mapped["records"].sum())
 st.caption(
     f"The map covers {mapped_records:,} of {len(filtered):,} filtered records "
@@ -219,7 +229,14 @@ if len(selected_municipalities) == 1 and not municipalities.empty:
     )
     profile_columns[1].metric("Total reported cost", currency(profile["total_reported_cost"]))
     profile_columns[2].metric("Median reported cost", currency(profile["median_reported_cost"]))
-    profile_columns[3].metric("Reported new dwellings", f"{int(profile['new_dwellings']):,}")
+    profile_columns[3].metric(
+        "New dwellings",
+        (
+            f"{int(profile['new_dwellings']):,}"
+            if pd.notna(profile["new_dwellings"])
+            else "Unavailable"
+        ),
+    )
     profile_columns[4].metric(
         "High-value share", f"{profile['high_value_share']:.1%}", help="Reported cost above $10m"
     )
