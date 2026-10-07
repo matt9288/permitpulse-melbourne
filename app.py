@@ -1,90 +1,85 @@
 from __future__ import annotations
 
 import json
-from datetime import date
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from permitpulse.dashboard import (
-    DETAILED_COST_BAND_ORDER,
-    DashboardFilters,
-    apply_filters,
-    complete_year_pair,
-    complete_years,
+from permitpulse.dashboard import DETAILED_COST_BAND_ORDER, load_parquet
+from permitpulse.pipeline import COST_BAND_ORDER
+from permitpulse.statewide_dashboard import (
+    StatewideFilters,
+    apply_statewide_filters,
+    category_summary,
     cost_comparison,
     cost_distribution,
-    detailed_cost_band_values,
     headline_metrics,
-    load_parquet,
     metric_glossary,
     monthly_activity,
-    opportunity_benchmarks,
-    permit_map_points,
-    priority_permits,
-    suburb_counts,
-    suburb_opportunity_summary,
-    work_category_counts,
+    municipality_map_summary,
+    municipality_summary,
 )
-from permitpulse.pipeline import COST_BAND_ORDER, WORK_CATEGORY_ORDER
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data" / "processed"
+REFERENCE_DIR = PROJECT_ROOT / "data" / "reference"
 PERMITS_PATH = DATA_DIR / "analytic_permits.parquet"
 QUALITY_PATH = DATA_DIR / "data_quality_results.parquet"
 METADATA_PATH = DATA_DIR / "source_metadata.json"
+BOUNDARIES_PATH = REFERENCE_DIR / "victoria_lga_simplified.geojson"
 
 PLOT_COLOUR = "#176B87"
 ACCENT_COLOUR = "#C56A2D"
 
 
 @st.cache_data(show_spinner=False)
-def load_dashboard_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, object]]:
+def load_dashboard_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
     permits = load_parquet(PERMITS_PATH)
     quality = load_parquet(QUALITY_PATH)
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
-    return permits, quality, metadata
+    boundaries = json.loads(BOUNDARIES_PATH.read_text(encoding="utf-8"))
+    return permits, quality, metadata, boundaries
 
 
 def currency(value: float | None) -> str:
-    if value is None:
+    if value is None or pd.isna(value):
         return "Unavailable"
-    if value >= 1_000_000:
+    if abs(value) >= 1_000_000_000:
+        return f"${value / 1_000_000_000:,.1f}bn"
+    if abs(value) >= 1_000_000:
         return f"${value / 1_000_000:,.1f}m"
-    if value >= 1_000:
+    if abs(value) >= 1_000:
         return f"${value / 1_000:,.0f}k"
     return f"${value:,.0f}"
 
 
-st.set_page_config(page_title="PermitPulse Melbourne", page_icon="🏗️", layout="wide")
-st.title("PermitPulse Melbourne")
+st.set_page_config(page_title="PermitPulse Victoria", page_icon="🏗️", layout="wide")
+st.title("PermitPulse Victoria")
 st.caption(
-    "Explore City of Melbourne building-permit activity using one record per council "
-    "permit reference."
+    "Explore statewide building-permit activity reported to Victoria's Building and Plumbing "
+    "Commission. Counts are source records, not deduplicated permits."
 )
 
 try:
-    permits, quality, metadata = load_dashboard_inputs()
+    permits, quality, metadata, boundaries = load_dashboard_inputs()
 except (FileNotFoundError, json.JSONDecodeError) as error:
-    st.error(
-        f"The processed data is unavailable. Run the PermitPulse build first. Details: {error}"
-    )
+    st.error(f"The statewide dashboard bundle is unavailable. Details: {error}")
     st.stop()
 
-valid_dates = permits["permit_issue_date"].dropna()
-minimum_date = valid_dates.min().date()
-maximum_date = valid_dates.max().date()
-default_start = max(minimum_date, date(2018, 1, 1))
-default_end = min(maximum_date, date(2025, 12, 31))
+minimum_period = permits["report_month"].min().date()
+maximum_period = (permits["report_month"].max() + pd.offsets.MonthEnd(0)).date()
 
 st.sidebar.header("Filters")
 selected_dates = st.sidebar.date_input(
-    "Permit issue date",
-    value=(default_start, default_end),
-    min_value=minimum_date,
-    max_value=maximum_date,
+    "BPC reporting period",
+    value=(minimum_period, maximum_period),
+    min_value=minimum_period,
+    max_value=maximum_period,
+    help=(
+        "This uses the regulator's levy reporting period. Permit issue date is retained separately."
+    ),
 )
 if isinstance(selected_dates, tuple) and len(selected_dates) == 2:
     selected_start, selected_end = selected_dates
@@ -93,359 +88,295 @@ else:
         selected_dates[0] if isinstance(selected_dates, tuple) else selected_dates
     )
 
-suburb_options = sorted(permits["suburb"].dropna().unique().tolist())
-selected_suburbs = st.sidebar.multiselect(
-    "Suburbs",
-    suburb_options,
-    help="Choose one suburb for a focused view, several for comparison, or leave empty for all.",
+region_options = sorted(permits["region"].dropna().unique().tolist())
+selected_regions = st.sidebar.multiselect("Regions", region_options)
+location_base = permits
+if selected_regions:
+    location_base = location_base.loc[location_base["region"].isin(selected_regions)]
+municipality_options = sorted(location_base["municipality"].dropna().unique().tolist())
+selected_municipalities = st.sidebar.multiselect(
+    "Municipalities",
+    municipality_options,
+    help="Choose one municipality for a focused business profile or several for comparison.",
 )
-st.sidebar.caption("The suburb selection updates the map, metrics, charts and records.")
-selected_cost_bands = st.sidebar.multiselect("Estimated-cost bands", COST_BAND_ORDER)
-selected_work_categories = st.sidebar.multiselect("Rule-based work categories", WORK_CATEGORY_ORDER)
+if selected_municipalities:
+    location_base = location_base.loc[location_base["municipality"].isin(selected_municipalities)]
+suburb_options = sorted(location_base["suburb"].dropna().unique().tolist())
+selected_suburbs = st.sidebar.multiselect("Suburbs", suburb_options)
+selected_cost_bands = st.sidebar.multiselect("Reported-cost bands", COST_BAND_ORDER)
+selected_work = st.sidebar.multiselect(
+    "Nature of work", sorted(permits["nature_of_work"].dropna().unique().tolist())
+)
+selected_building_uses = st.sidebar.multiselect(
+    "Building use", sorted(permits["building_use"].dropna().unique().tolist())
+)
 text_query = st.sidebar.text_input(
-    "Search permit, description or address", placeholder="e.g. fitout or BP-2025"
+    "Search location or category", placeholder="e.g. Geelong or demolition"
 )
 
-filters = DashboardFilters(
+filters = StatewideFilters(
     start_date=selected_start,
     end_date=selected_end,
+    regions=tuple(selected_regions),
+    municipalities=tuple(selected_municipalities),
     suburbs=tuple(selected_suburbs),
     cost_bands=tuple(selected_cost_bands),
-    work_categories=tuple(selected_work_categories),
+    nature_of_work=tuple(selected_work),
+    building_uses=tuple(selected_building_uses),
     text_query=text_query,
 )
-filtered = apply_filters(permits, filters)
-comparison_filters = DashboardFilters(
-    start_date=selected_start,
-    end_date=selected_end,
-    cost_bands=tuple(selected_cost_bands),
-    work_categories=tuple(selected_work_categories),
-    text_query=text_query,
-)
-municipality_filtered = apply_filters(permits, comparison_filters)
-
-if selected_end.year >= 2026:
-    st.warning(
-        "The 2026 source partition drops sharply after April and appears incomplete or delayed. "
-        "Do not interpret recent counts as a market downturn."
-    )
-
+filtered = apply_statewide_filters(permits, filters)
 if filtered.empty:
     st.info(
-        "No unique permits match the current filters. Broaden the date range or clear a filter."
+        "No permit records match the current filters. Broaden the reporting period or "
+        "clear a filter."
     )
     st.stop()
 
 metrics = headline_metrics(filtered)
-kpi_columns = st.columns(4)
-kpi_columns[0].metric("Unique building permits", f"{metrics['permits']:,}")
-kpi_columns[1].metric("Median positive estimated cost", currency(metrics["median_positive_cost"]))
-kpi_columns[2].metric("Suburbs represented", f"{metrics['suburbs']:,}")
-kpi_columns[3].metric("Share above $10m", f"{metrics['high_value_share']:.1%}")
+kpi_columns = st.columns(5)
+kpi_columns[0].metric("Permit records", f"{metrics['records']:,}")
+kpi_columns[1].metric("Total reported cost", currency(metrics["reported_cost"]))
+kpi_columns[2].metric("Median positive cost", currency(metrics["median_positive_cost"]))
+kpi_columns[3].metric("Municipalities", f"{metrics['municipalities']:,}")
+kpi_columns[4].metric("Reported new dwellings", f"{metrics['new_dwellings']:,}")
 
-st.subheader("Permit activity map")
-if selected_suburbs:
-    map_scope = ", ".join(suburb.title() for suburb in selected_suburbs)
-else:
-    map_scope = "all suburbs"
+st.subheader("Statewide permit hotspots")
+map_measure = st.radio(
+    "Map measure", ["Permit records", "Reported cost", "New dwellings"], horizontal=True
+)
+map_columns = {
+    "Permit records": ("records", "Permit records"),
+    "Reported cost": ("reported_cost", "Reported cost"),
+    "New dwellings": ("new_dwellings", "New dwellings"),
+}
+value_column, value_label = map_columns[map_measure]
+map_data = municipality_map_summary(filtered)
+boundary_names = {feature["properties"]["lga_name"] for feature in boundaries.get("features", [])}
+map_data["is_mapped"] = map_data["municipality_map_name"].isin(boundary_names)
+mapped = map_data.loc[map_data["is_mapped"]].copy()
+map_figure = px.choropleth_map(
+    mapped,
+    geojson=boundaries,
+    locations="municipality_map_name",
+    featureidkey="properties.lga_name",
+    color=value_column,
+    hover_name="municipality",
+    hover_data={
+        "records": ":,",
+        "reported_cost": ":$,.0f",
+        "new_dwellings": ":,",
+        "municipality_map_name": False,
+    },
+    labels={
+        "records": "Permit records",
+        "reported_cost": "Reported cost",
+        "new_dwellings": "New dwellings",
+    },
+    color_continuous_scale="YlOrRd",
+    map_style="carto-positron",
+    center={"lat": -36.9, "lon": 144.7},
+    zoom=4.7,
+    opacity=0.75,
+    height=650,
+    title=f"Municipality intensity by {value_label.lower()}",
+)
+map_figure.update_layout(margin=dict(l=0, r=0, t=55, b=0))
+st.plotly_chart(map_figure, width="stretch")
+mapped_records = int(mapped["records"].sum())
+st.caption(
+    f"The map covers {mapped_records:,} of {len(filtered):,} filtered records "
+    f"({mapped_records / len(filtered):.1%}). It uses official Vicmap municipality boundaries; "
+    "the statewide source does not publish address coordinates."
+)
 
-map_points = permit_map_points(filtered)
-if map_points.empty:
-    st.info(
-        "No address-derived coordinates are available for the current filters. "
-        "The other dashboard views remain available."
+available_years = sorted(
+    filtered["report_year"].dropna().astype(int).unique().tolist(), reverse=True
+)
+st.subheader("Municipality business profile")
+if len(available_years) >= 2:
+    profile_controls = st.columns(2)
+    profile_year = profile_controls[0].selectbox(
+        "Profile year", available_years, key="profile_year"
     )
-else:
-    latitude_span = float(map_points["latitude"].max() - map_points["latitude"].min())
-    longitude_span = float(map_points["longitude"].max() - map_points["longitude"].min())
-    coordinate_span = max(latitude_span, longitude_span)
-    if coordinate_span < 0.01:
-        map_zoom = 14
-    elif coordinate_span < 0.025:
-        map_zoom = 13
-    elif coordinate_span < 0.06:
-        map_zoom = 12
-    else:
-        map_zoom = 11
-    map_figure = px.density_map(
-        map_points,
-        lat="latitude",
-        lon="longitude",
-        z="permits",
-        radius=22,
-        center={
-            "lat": float(filtered["latitude"].dropna().mean()),
-            "lon": float(filtered["longitude"].dropna().mean()),
-        },
-        zoom=map_zoom,
-        map_style="carto-positron",
-        color_continuous_scale="YlOrRd",
-        hover_name="suburb",
-        hover_data={
-            "permits": ":,",
-            "geocode_method": True,
-            "latitude": False,
-            "longitude": False,
-        },
-        labels={
-            "permits": "Unique permits",
-            "geocode_method": "Location method",
-        },
-        title=f"Permit hotspots — {map_scope}",
-        height=610,
-    )
-    map_figure.update_layout(
-        margin=dict(l=0, r=0, t=55, b=0),
-        coloraxis_colorbar_title="Permits",
-    )
-    st.plotly_chart(map_figure, width="stretch")
-    mapped_count = int(filtered["latitude"].notna().sum())
-    st.caption(
-        f"Mapped {mapped_count:,} of {len(filtered):,} filtered permits "
-        f"({mapped_count / len(filtered):.1%}). Hotspots use representative permit "
-        "locations, not every address attached to a permit."
-    )
-
-st.subheader("Suburb opportunity profile")
-try:
-    analysis_date = date.fromisoformat(str(metadata.get("as_of_date")))
-except ValueError:
-    analysis_date = date.today()
-year_pair = complete_year_pair(selected_start, selected_end, analysis_date)
-if year_pair:
-    profile_year, previous_year = year_pair
-    profile_label = str(profile_year)
-    st.caption(
-        f"Business signals use the latest two complete calendar years inside the current "
-        f"date range: {profile_year} versus {previous_year}. Other filters remain applied."
+    profile_baselines = [year for year in available_years if year != profile_year]
+    profile_baseline = profile_controls[1].selectbox(
+        "Profile baseline", profile_baselines, key="profile_baseline"
     )
 else:
-    profile_year = previous_year = None
-    profile_label = "selected period"
-    st.caption(
-        "The current date range does not contain two complete comparable calendar years. "
-        "The profile therefore summarises the selected period without a growth claim."
-    )
+    profile_year = available_years[0]
+    profile_baseline = None
 
-opportunity = suburb_opportunity_summary(filtered, profile_year, previous_year)
-benchmarks = opportunity_benchmarks(municipality_filtered, profile_year)
-
-if len(selected_suburbs) == 1 and not opportunity.empty:
-    selected_profile = opportunity.iloc[0]
-    profile_columns = st.columns(4)
+municipalities = municipality_summary(filtered, profile_year, profile_baseline)
+if len(selected_municipalities) == 1 and not municipalities.empty:
+    profile = municipalities.iloc[0]
+    profile_columns = st.columns(5)
     activity_delta = None
-    if pd.notna(selected_profile["activity_change"]):
-        activity_delta = (
-            f"{selected_profile['activity_change']:+.1%} vs {previous_year} "
-            f"({int(selected_profile['previous_permits']):,})"
-        )
+    if profile_baseline and pd.notna(profile["record_change"]):
+        activity_delta = f"{profile['record_change']:+.1%} vs {profile_baseline}"
     profile_columns[0].metric(
-        f"{profile_label} unique permits",
-        f"{int(selected_profile['current_permits']):,}",
-        delta=activity_delta,
-        delta_color="off",
+        f"{profile_year} permit records", f"{int(profile['focus_records']):,}", activity_delta
     )
-    profile_columns[1].metric(
-        "High-value permits above $10m",
-        f"{int(selected_profile['high_value_permits']):,}",
+    profile_columns[1].metric("Total reported cost", currency(profile["total_reported_cost"]))
+    profile_columns[2].metric("Median reported cost", currency(profile["median_reported_cost"]))
+    profile_columns[3].metric("Reported new dwellings", f"{int(profile['new_dwellings']):,}")
+    profile_columns[4].metric(
+        "High-value share", f"{profile['high_value_share']:.1%}", help="Reported cost above $10m"
     )
-    profile_columns[1].caption(
-        f"{selected_profile['high_value_share']:.1%} of {profile_label} permits; "
-        f"municipality benchmark {benchmarks['high_value_share']:.1%}."
-    )
-    cost_difference = None
-    municipality_cost = benchmarks["median_positive_cost"]
-    if municipality_cost and pd.notna(selected_profile["median_positive_cost"]):
-        cost_difference = selected_profile["median_positive_cost"] / municipality_cost - 1
-    profile_columns[2].metric(
-        f"{profile_label} median estimated cost",
-        currency(selected_profile["median_positive_cost"]),
-        delta=f"{cost_difference:+.1%} vs municipality" if cost_difference is not None else None,
-        delta_color="off",
-    )
-    profile_columns[3].metric(
-        "Dominant work category",
-        selected_profile["dominant_work_category"],
-    )
-    profile_columns[3].caption(
-        f"{selected_profile['dominant_category_share']:.1%} of {profile_label} permits."
-    )
-
-    st.markdown("#### Priority permit records")
-    st.caption(
-        f"The five highest source-reported estimated costs in {profile_label}; these are "
-        "investigation candidates, not confirmed commercial leads or realised expenditure."
-    )
-    priority = priority_permits(filtered, profile_year)
-    st.dataframe(
-        priority,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "council_ref": "Council reference",
-            "permit_issue_date": st.column_config.DateColumn("Issue date", format="DD MMM YYYY"),
-            "estimated_cost": st.column_config.NumberColumn("Estimated cost", format="$%.0f"),
-            "work_category_rule": "Work category",
-            "primary_address": "Primary address",
-        },
-    )
+    municipality_period = filtered.loc[filtered["report_year"] == profile_year]
+    mix_left, mix_right = st.columns(2)
+    with mix_left:
+        st.markdown("#### Nature-of-work mix")
+        st.dataframe(
+            category_summary(municipality_period, "nature_of_work"),
+            hide_index=True,
+            width="stretch",
+        )
+    with mix_right:
+        st.markdown("#### Building-use mix")
+        st.dataframe(
+            category_summary(municipality_period, "building_use"),
+            hide_index=True,
+            width="stretch",
+        )
 else:
-    if selected_suburbs:
-        comparison_scope = "Selected suburbs"
-    else:
-        comparison_scope = "All suburbs"
-    st.markdown(f"#### {comparison_scope}")
     st.caption(
-        f"Ranked by {profile_label} permit volume. Select one suburb for municipality "
-        "benchmarks and priority permit records."
+        "Compare municipalities by volume, estimated project value and dwelling impact. "
+        "Select one municipality in the sidebar for its category mix."
     )
-    comparison_columns = [
-        "suburb",
-        "current_permits",
-        "high_value_permits",
-        "high_value_share",
-        "median_positive_cost",
-        "dominant_work_category",
-        "dominant_category_share",
-    ]
-    if year_pair:
-        comparison_columns[2:2] = ["previous_permits", "activity_change"]
     st.dataframe(
-        opportunity[comparison_columns],
-        width="stretch",
+        municipalities.head(25),
         hide_index=True,
+        width="stretch",
         column_config={
-            "suburb": "Suburb",
-            "current_permits": st.column_config.NumberColumn(
-                f"{profile_label} permits", format="%d"
+            "municipality": "Municipality",
+            "focus_records": st.column_config.NumberColumn(f"{profile_year} records", format="%d"),
+            "baseline_records": st.column_config.NumberColumn(
+                f"{profile_baseline} records" if profile_baseline else "Baseline records",
+                format="%d",
             ),
-            "previous_permits": st.column_config.NumberColumn(
-                f"{previous_year} permits", format="%d"
+            "record_change": st.column_config.NumberColumn("Record change", format="percent"),
+            "total_reported_cost": st.column_config.NumberColumn(
+                "Total reported cost", format="$%.0f"
             ),
-            "activity_change": st.column_config.NumberColumn("Activity change", format="percent"),
-            "high_value_permits": st.column_config.NumberColumn("Permits above $10m", format="%d"),
-            "high_value_share": st.column_config.NumberColumn("Share above $10m", format="percent"),
-            "median_positive_cost": st.column_config.NumberColumn(
-                "Median estimated cost", format="$%.0f"
+            "median_reported_cost": st.column_config.NumberColumn(
+                "Median reported cost", format="$%.0f"
             ),
-            "dominant_work_category": "Dominant work category",
-            "dominant_category_share": st.column_config.NumberColumn(
-                "Top category share", format="percent"
+            "high_value_records": st.column_config.NumberColumn("Records above $10m", format="%d"),
+            "high_value_share": st.column_config.NumberColumn("High-value share", format="percent"),
+            "new_dwellings": st.column_config.NumberColumn("New dwellings", format="%d"),
+            "dwellings_demolished": st.column_config.NumberColumn(
+                "Dwellings demolished", format="%d"
             ),
         },
     )
 
 trend = monthly_activity(filtered)
+trend_measure = st.radio("Trend measure", ["Permit records", "Reported cost"], horizontal=True)
+trend_column = "records" if trend_measure == "Permit records" else "reported_cost"
 trend_figure = px.line(
     trend,
-    x="issue_month",
-    y="permits",
+    x="report_month",
+    y=trend_column,
     markers=True,
-    title="Unique permits by issue month",
-    labels={"issue_month": "Issue month", "permits": "Unique permits"},
+    title=f"{trend_measure} by BPC reporting month",
+    labels={"report_month": "Reporting month", trend_column: trend_measure},
     color_discrete_sequence=[PLOT_COLOUR],
     template="plotly_white",
 )
 trend_figure.update_layout(hovermode="x unified", margin=dict(l=20, r=20, t=55, b=20))
 trend_figure.update_yaxes(rangemode="tozero")
+if trend_column == "reported_cost":
+    trend_figure.update_yaxes(tickprefix="$", separatethousands=True)
 st.plotly_chart(trend_figure, width="stretch")
 
-left, right = st.columns(2)
+left, middle, right = st.columns(3)
 with left:
-    suburbs = suburb_counts(filtered)
-    suburb_figure = px.bar(
+    suburbs = category_summary(filtered, "suburb", limit=12).sort_values("records")
+    figure = px.bar(
         suburbs,
-        x="permits",
+        x="records",
         y="suburb",
         orientation="h",
-        title="Top suburbs by unique-permit count",
-        labels={"suburb": "Suburb", "permits": "Unique permits"},
+        title="Top suburbs by permit records",
+        labels={"suburb": "Suburb", "records": "Permit records"},
         color_discrete_sequence=[ACCENT_COLOUR],
         template="plotly_white",
     )
-    suburb_figure.update_layout(margin=dict(l=20, r=20, t=55, b=20))
-    suburb_figure.update_xaxes(rangemode="tozero")
-    st.plotly_chart(suburb_figure, width="stretch")
-
-with right:
-    work = work_category_counts(filtered).sort_values("permits")
-    work_figure = px.bar(
+    st.plotly_chart(figure, width="stretch")
+with middle:
+    work = category_summary(filtered, "nature_of_work").sort_values("records")
+    figure = px.bar(
         work,
-        x="permits",
-        y="work_category_rule",
+        x="records",
+        y="nature_of_work",
         orientation="h",
-        title="Rule-based work categories",
-        labels={"work_category_rule": "Work category", "permits": "Unique permits"},
+        title="Official nature of work",
+        labels={"nature_of_work": "Nature of work", "records": "Permit records"},
         color_discrete_sequence=[PLOT_COLOUR],
         template="plotly_white",
     )
-    work_figure.update_layout(margin=dict(l=20, r=20, t=55, b=20))
-    work_figure.update_xaxes(rangemode="tozero")
-    st.plotly_chart(work_figure, width="stretch")
+    st.plotly_chart(figure, width="stretch")
+with right:
+    uses = category_summary(filtered, "building_use").sort_values("records")
+    figure = px.bar(
+        uses,
+        x="records",
+        y="building_use",
+        orientation="h",
+        title="Building use",
+        labels={"building_use": "Building use", "records": "Permit records"},
+        color_discrete_sequence=[ACCENT_COLOUR],
+        template="plotly_white",
+    )
+    st.plotly_chart(figure, width="stretch")
 
-st.subheader("Estimated-cost analysis")
+st.subheader("Reported-cost analysis")
 st.caption(
-    "Change the aggregation in this view to switch directly between broad market ranges and "
-    "the complete detailed breakdown. All dashboard filters remain applied."
+    "Change the aggregation directly in this view. Year comparison uses BPC reporting year "
+    "so the totals reconcile to the regulator's annual summary."
 )
 aggregation_control, measure_control = st.columns(2)
 cost_aggregation = aggregation_control.radio(
-    "Cost range aggregation",
-    ["Broad ranges", "Detailed ranges"],
-    horizontal=True,
-    help="Detailed ranges subdivide every positive broad range in the same chart.",
+    "Cost range aggregation", ["Broad ranges", "Detailed ranges"], horizontal=True
 )
 comparison_measure = measure_control.radio(
-    "Comparison measure",
-    ["Permit count", "Total estimated cost"],
-    horizontal=True,
+    "Comparison measure", ["Permit records", "Total reported cost"], horizontal=True
 )
-detailed_cost_view = cost_aggregation == "Detailed ranges"
-cost_order = DETAILED_COST_BAND_ORDER if detailed_cost_view else COST_BAND_ORDER
-aggregation_label = "detailed" if detailed_cost_view else "broad"
-available_cost_years = complete_years(selected_start, selected_end, analysis_date)
+detailed = cost_aggregation == "Detailed ranges"
+cost_order = DETAILED_COST_BAND_ORDER if detailed else COST_BAND_ORDER
 
-if len(available_cost_years) >= 2:
-    year_options = sorted(available_cost_years, reverse=True)
-    focus_control, baseline_control = st.columns(2)
-    focus_year = focus_control.selectbox(
-        "Focus year",
-        year_options,
-        index=0,
-        help="Choose any complete calendar year inside the active date range.",
+if len(available_years) >= 2:
+    cost_controls = st.columns(2)
+    focus_year = cost_controls[0].selectbox("Focus year", available_years, key="cost_focus_year")
+    baseline_options = [year for year in available_years if year != focus_year]
+    baseline_year = cost_controls[1].selectbox(
+        "Baseline year", baseline_options, key="cost_baseline_year"
     )
-    baseline_options = [year for year in year_options if year != focus_year]
-    baseline_year = baseline_control.selectbox(
-        "Baseline year",
-        baseline_options,
-        index=0,
-        help="The change columns calculate focus year relative to this year.",
-    )
-    comparison = cost_comparison(
-        filtered,
-        focus_year,
-        baseline_year,
-        detailed=detailed_cost_view,
-    )
+    comparison = cost_comparison(filtered, focus_year, baseline_year, detailed)
     comparison = comparison.loc[
-        (comparison["current_permits"] > 0) | (comparison["previous_permits"] > 0)
+        (comparison["focus_records"] > 0) | (comparison["baseline_records"] > 0)
     ].copy()
-    if comparison_measure == "Permit count":
-        value_label = "Unique permits"
-        baseline_column = "previous_permits"
-        focus_column = "current_permits"
+    if comparison_measure == "Permit records":
+        focus_column, baseline_column, value_label = (
+            "focus_records",
+            "baseline_records",
+            "Permit records",
+        )
     else:
-        value_label = "Total estimated cost"
-        baseline_column = "previous_total_estimated_cost"
-        focus_column = "current_total_estimated_cost"
+        focus_column, baseline_column, value_label = (
+            "focus_total_reported_cost",
+            "baseline_total_reported_cost",
+            "Total reported cost",
+        )
     chart_rows = pd.concat(
         [
             comparison[["cost_range", baseline_column]]
             .rename(columns={baseline_column: "value"})
-            .assign(issue_year=str(baseline_year)),
+            .assign(report_year=str(baseline_year)),
             comparison[["cost_range", focus_column]]
             .rename(columns={focus_column: "value"})
-            .assign(issue_year=str(focus_year)),
+            .assign(report_year=str(focus_year)),
         ],
         ignore_index=True,
     )
@@ -453,232 +384,96 @@ if len(available_cost_years) >= 2:
         chart_rows,
         x="cost_range",
         y="value",
-        color="issue_year",
+        color="report_year",
         barmode="group",
-        title=(
-            f"{value_label} by {aggregation_label} estimated-cost range — "
-            f"{focus_year} versus {baseline_year}"
-        ),
+        title=f"{value_label} by cost range — {focus_year} versus {baseline_year}",
         labels={
-            "cost_range": "Estimated-cost range",
+            "cost_range": "Reported-cost range",
             "value": value_label,
-            "issue_year": "Permit issue year",
+            "report_year": "Reporting year",
         },
         category_orders={
             "cost_range": cost_order,
-            "issue_year": [str(baseline_year), str(focus_year)],
+            "report_year": [str(baseline_year), str(focus_year)],
         },
         color_discrete_sequence=["#9AAFB8", ACCENT_COLOUR],
         template="plotly_white",
-        height=560 if detailed_cost_view else 460,
+        height=560 if detailed else 460,
     )
     cost_figure.update_layout(margin=dict(l=20, r=20, t=70, b=80))
-    cost_figure.update_xaxes(tickangle=-35 if detailed_cost_view else 0)
-    cost_figure.update_yaxes(rangemode="tozero")
-    if comparison_measure == "Total estimated cost":
+    cost_figure.update_xaxes(tickangle=-35 if detailed else 0)
+    if comparison_measure == "Total reported cost":
         cost_figure.update_yaxes(tickprefix="$", separatethousands=True)
     st.plotly_chart(cost_figure, width="stretch")
-    st.caption(
-        f"Comparison uses the selected complete years: {focus_year} as the focus and "
-        f"{baseline_year} as the baseline. Change = (focus ÷ baseline) − 1. Estimated-cost "
-        "totals are nominal source-reported values, not realised expenditure."
-    )
     st.dataframe(
-        comparison[
-            [
-                "cost_range",
-                "previous_permits",
-                "current_permits",
-                "permit_change",
-                "previous_total_estimated_cost",
-                "current_total_estimated_cost",
-                "estimated_cost_change",
-                "current_median_estimated_cost",
-            ]
-        ],
-        width="stretch",
+        comparison,
         hide_index=True,
+        width="stretch",
         column_config={
-            "cost_range": "Estimated-cost range",
-            "previous_permits": st.column_config.NumberColumn(
-                f"{baseline_year} permits", format="%d"
+            "cost_range": "Reported-cost range",
+            "focus_records": st.column_config.NumberColumn(f"{focus_year} records", format="%d"),
+            "baseline_records": st.column_config.NumberColumn(
+                f"{baseline_year} records", format="%d"
             ),
-            "current_permits": st.column_config.NumberColumn(
-                f"{focus_year} permits", format="%d"
+            "record_change": st.column_config.NumberColumn("Record change", format="percent"),
+            "focus_total_reported_cost": st.column_config.NumberColumn(
+                f"{focus_year} total cost", format="$%.0f"
             ),
-            "permit_change": st.column_config.NumberColumn(
-                "Permit change", format="percent"
+            "baseline_total_reported_cost": st.column_config.NumberColumn(
+                f"{baseline_year} total cost", format="$%.0f"
             ),
-            "previous_total_estimated_cost": st.column_config.NumberColumn(
-                f"{baseline_year} total estimated cost", format="$%.0f"
-            ),
-            "current_total_estimated_cost": st.column_config.NumberColumn(
-                f"{focus_year} total estimated cost", format="$%.0f"
-            ),
-            "estimated_cost_change": st.column_config.NumberColumn(
-                "Estimated-cost change", format="percent"
-            ),
-            "current_median_estimated_cost": st.column_config.NumberColumn(
-                f"{focus_year} median estimated cost", format="$%.0f"
-            ),
+            "reported_cost_change": st.column_config.NumberColumn("Cost change", format="percent"),
         },
     )
 else:
-    distribution = cost_distribution(filtered, detailed=detailed_cost_view)
-    distribution = distribution.loc[distribution["permits"] > 0].copy()
-    value_column = (
-        "permits" if comparison_measure == "Permit count" else "total_estimated_cost"
-    )
-    value_label = (
-        "Unique permits"
-        if comparison_measure == "Permit count"
-        else "Total estimated cost"
-    )
+    distribution = cost_distribution(filtered, detailed)
+    distribution = distribution.loc[distribution["records"] > 0]
+    value_column = "records" if comparison_measure == "Permit records" else "total_reported_cost"
     cost_figure = px.bar(
         distribution,
         x="cost_range",
         y=value_column,
-        title=f"{value_label} by {aggregation_label} estimated-cost range — selected period",
-        labels={"cost_range": "Estimated-cost range", value_column: value_label},
+        title=f"{comparison_measure} by reported-cost range",
         category_orders={"cost_range": cost_order},
         color_discrete_sequence=[ACCENT_COLOUR],
         template="plotly_white",
-        height=560 if detailed_cost_view else 460,
     )
-    cost_figure.update_layout(margin=dict(l=20, r=20, t=70, b=80))
-    cost_figure.update_xaxes(tickangle=-35 if detailed_cost_view else 0)
-    cost_figure.update_yaxes(rangemode="tozero")
-    if comparison_measure == "Total estimated cost":
-        cost_figure.update_yaxes(tickprefix="$", separatethousands=True)
     st.plotly_chart(cost_figure, width="stretch")
-    st.caption(
-        "The selected date range contains fewer than two complete calendar years, so this view "
-        "shows the selected-period distribution without a year comparison."
-    )
-    st.dataframe(
-        distribution,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "cost_range": "Estimated-cost range",
-            "permits": st.column_config.NumberColumn("Unique permits", format="%d"),
-            "total_estimated_cost": st.column_config.NumberColumn(
-                "Total estimated cost", format="$%.0f"
-            ),
-            "median_estimated_cost": st.column_config.NumberColumn(
-                "Median estimated cost", format="$%.0f"
-            ),
-        },
-    )
 
-with st.expander("Metric definitions and responsible use"):
-    st.caption(
-        "Definitions apply to the currently filtered population unless the explanation names "
-        "a profile period or municipality benchmark. Use this dashboard for exploratory analysis, "
-        "not regulatory, legal, valuation or procurement decisions."
-    )
-    st.dataframe(
-        metric_glossary(),
-        width="stretch",
-        hide_index=True,
-        height=620,
-        column_config={
-            "term": st.column_config.TextColumn("Term", width="medium"),
-            "explanation": st.column_config.TextColumn("Explanation", width="large"),
-            "formula_or_rule": st.column_config.TextColumn("Formula or rule", width="large"),
-            "use_with_caution": st.column_config.TextColumn("Use with caution", width="large"),
-        },
-    )
-
-st.subheader("Unique permit records")
-record_columns = [
-    "council_ref",
-    "permit_issue_date",
-    "suburb",
-    "cost_band",
-    "estimated_cost",
-    "work_category_rule",
-    "desc_of_works",
-    "primary_address",
-]
-records = filtered[record_columns].sort_values("permit_issue_date", ascending=False)
-records.insert(4, "detailed_cost_band", detailed_cost_band_values(records))
-st.dataframe(
-    records,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        "council_ref": "Council reference",
-        "permit_issue_date": st.column_config.DateColumn("Issue date", format="DD MMM YYYY"),
-        "suburb": "Suburb",
-        "cost_band": "Cost band",
-        "detailed_cost_band": "Detailed cost band",
-        "estimated_cost": st.column_config.NumberColumn("Estimated cost", format="$%.0f"),
-        "work_category_rule": "Work category",
-        "desc_of_works": "Description",
-        "primary_address": "Primary address",
-    },
-)
+st.subheader("Download aggregated results")
 st.download_button(
-    "Download filtered records",
-    data=records.to_csv(index=False).encode("utf-8"),
-    file_name="permitpulse_filtered_permits.csv",
+    "Download municipality summary",
+    data=municipalities.to_csv(index=False).encode("utf-8"),
+    file_name="permitpulse_victoria_municipality_summary.csv",
     mime="text/csv",
 )
+st.caption(
+    "The public dashboard exports aggregates rather than raw street-level source rows. This "
+    "keeps the portfolio demo focused on business analysis and reduces privacy risk."
+)
+
+with st.expander("Metric definitions and responsible use"):
+    st.dataframe(metric_glossary(), hide_index=True, width="stretch")
 
 with st.expander("Source and data quality"):
     summary = metadata.get("summary", {})
-    geospatial = metadata.get("geospatial_source", {})
     st.markdown(
-        f"**Source:** City of Melbourne Building Permits (CC BY)  \n"
+        f"**Source:** {metadata.get('source_dataset', 'Unavailable')} — Building and "
+        "Plumbing Commission  \n"
+        f"**Licence:** {metadata.get('licence', 'Unavailable')}  \n"
         f"**Snapshot analysis date:** {metadata.get('as_of_date', 'Unavailable')}  \n"
-        f"**Source SHA-256:** `{metadata.get('source_sha256', 'Unavailable')}`  \n"
-        f"**Analytics-ready unique permits:** {summary.get('analytic_permits', 0):,}  \n"
-        f"**Map source:** {geospatial.get('dataset', 'Not supplied')} (CC BY)  \n"
-        f"**Map-source SHA-256:** `{geospatial.get('source_sha256', 'Unavailable')}`  \n"
-        f"**Mapped unique permits:** {summary.get('geocoded_permits', 0):,} "
-        f"({summary.get('geocoded_rate', 0):.1%})"
+        f"**Reporting years:** {', '.join(map(str, summary.get('report_years', [])))}  \n"
+        f"**Permit records:** {summary.get('records', 0):,}  \n"
+        f"**Municipalities:** {summary.get('municipalities', 0):,}  \n"
+        f"**Map source:** {metadata.get('geospatial_source', {}).get('dataset', 'Unavailable')}"
     )
-    st.caption(
-        "Counts use one Building Permit council reference per permit family. Map coordinates "
-        "come from exact City address points or the centroid of official points inside a stated "
-        "street-number range; unmatched records are not plotted. These are representative permit "
-        "locations, not parcel boundaries. Estimated costs are source-reported estimates, not "
-        "realised expenditure. Work categories use transparent keyword rules and have not yet "
-        "been replaced by a validated ML classifier."
+    st.caption(metadata.get("data_model", ""))
+    st.warning(
+        "This dataset does not include refused or not-granted applications. It cannot be used "
+        "to estimate refusal risk without a separate authoritative open dataset."
     )
-    warnings = quality.loc[
-        quality["status"] == "warn",
-        [
-            "check_id",
-            "severity",
-            "affected_rows",
-            "affected_rate",
-            "metric_value",
-            "metric_unit",
-            "details",
-        ],
-    ].copy()
-    warnings["affected_rate"] = warnings["affected_rate"].map(
+    quality_display = quality.copy()
+    quality_display["affected_rate"] = quality_display["affected_rate"].map(
         lambda value: f"{value:.2%}" if pd.notna(value) else ""
     )
-    warnings = warnings.rename(
-        columns={
-            "check_id": "Check",
-            "severity": "Severity",
-            "affected_rows": "Affected rows",
-            "affected_rate": "Affected rate",
-            "metric_value": "Metric value",
-            "metric_unit": "Metric unit",
-            "details": "Interpretation",
-        }
-    )
-    st.dataframe(
-        warnings,
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Affected rows": st.column_config.NumberColumn(format="%d"),
-            "Metric value": st.column_config.NumberColumn(format="%.3f"),
-        },
-    )
+    st.dataframe(quality_display, hide_index=True, width="stretch")

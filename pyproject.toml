@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "permitpulse-melbourne"
 version = "0.1.0"
-description = "Open-data permit intelligence prototype for the City of Melbourne"
+description = "Open-data building-permit intelligence prototype for Victoria"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = { text = "MIT" }
@@ -14,6 +14,7 @@ dependencies = [
   "duckdb>=1.4,<2",
   "pandas>=2.2,<4",
   "plotly>=6,<7",
+  "python-calamine>=0.3,<1",
   "streamlit>=1.50,<2",
 ]
 

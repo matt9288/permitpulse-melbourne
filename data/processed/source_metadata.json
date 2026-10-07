@@ -1,34 +1,72 @@
 {
-  "as_of_date": "2026-10-01",
-  "built_at_utc": "2026-10-03T11:55:18.804377+00:00",
-  "dataset": "City of Melbourne Building Permits",
-  "geospatial_source": {
-    "dataset": "City of Melbourne Street addresses",
-    "methods": {
-      "exact address point": "Mean of official points sharing the exact address key.",
-      "range centroid": "Mean of official address points within the permit number range on the same street and suburb.",
-      "street-number centroid": "Mean of official points sharing the street number when suffixes differ.",
-      "unmatched": "No coordinate assigned."
+  "project_scope": "Victoria",
+  "as_of_date": "2026-10-07",
+  "built_at_utc": "2026-10-07T00:40:37.041513+00:00",
+  "source_file": "BPC annual building-permit workbooks",
+  "source_dataset": "Building Permit Activity Data",
+  "source_url": "https://discover.data.vic.gov.au/dataset/building-permit-activity-data",
+  "publisher_url": "https://www.bpc.vic.gov.au/about-bpc/research-reports-and-data/data",
+  "licence": "Creative Commons Attribution 4.0",
+  "data_model": "One row per source-reported permit activity record. The public files do not include a permit identifier, so records are not deduplicated and are not described as unique permits.",
+  "primary_period": "BPC levy reporting month and year. Permit issue date is retained separately and may fall outside the reporting year.",
+  "sources": [
+    {
+      "source_file": "VBA-DataVic-Building-Permits-2024-December.xlsb",
+      "source_sha256": "3e922586dceef2cecb693f126ebf34d73489c4aa1353486c174e428f319b86da",
+      "sheet_name": "Data",
+      "rows": 100400,
+      "columns": 37,
+      "report_years": [
+        2024
+      ],
+      "street_column": "Cleaned_site_street_name"
     },
-    "source_bytes": 16065404,
-    "source_file": "street-addresses.csv",
-    "source_sha256": "acb4a2193341ae9fd60cdd7e98dda9f389f4cdc7ffe16393398e2dd01c52034a",
-    "source_url": "https://data.melbourne.vic.gov.au/api/explore/v2.1/catalog/datasets/street-addresses/exports/csv?lang=en&timezone=Australia%2FMelbourne&use_labels=false&delimiter=%2C"
+    {
+      "source_file": "20260079-Rawdata-December-2025.xlsb",
+      "source_sha256": "fa349e9468b04949a96f7a430054e496a0990a46065f6cc1fee57d0fdd2d9a8d",
+      "sheet_name": "Sheet1",
+      "rows": 100710,
+      "columns": 36,
+      "report_years": [
+        2025
+      ],
+      "street_column": "Site_street_name"
+    }
+  ],
+  "geospatial_source": {
+    "dataset": "Vicmap Admin Local Government Area boundaries",
+    "source_file": "victoria_lga_simplified.geojson",
+    "source_url": "https://discover.data.vic.gov.au/dataset/vicmap-admin-rest-api",
+    "licence": "Creative Commons Attribution 4.0",
+    "geometry_note": "Official polygons simplified to 0.002 degrees for dashboard performance."
   },
-  "source_bytes": 37506244,
-  "source_file": "building-permits.csv",
-  "source_sha256": "94b8e53e42e782bf177a6b75c2a1d97018536ac778374664ab0cd655c3400a6e",
-  "source_url": "https://data.melbourne.vic.gov.au/api/v2/catalog/datasets/building-permits/exports/csv?delimiter=%2C",
   "summary": {
-    "analytic_permits": 74562,
-    "as_of_date": "2026-10-01",
-    "certificate_events": 154443,
-    "geocoded_permits": 73141,
-    "geocoded_rate": 0.9809420348166626,
-    "permit_addresses": 88437,
-    "permit_families": 74601,
-    "quarantine_issues": 1493,
-    "raw_rows": 184858,
-    "source_sha256": "94b8e53e42e782bf177a6b75c2a1d97018536ac778374664ab0cd655c3400a6e"
-  }
+    "records": 201110,
+    "report_years": [
+      2024,
+      2025
+    ],
+    "municipalities": 83,
+    "suburbs": 2722,
+    "reported_cost": 107740390617.0,
+    "annual": [
+      {
+        "report_year": 2024,
+        "records": 100400,
+        "reported_cost": 49990056504.0
+      },
+      {
+        "report_year": 2025,
+        "records": 100710,
+        "reported_cost": 57750334113.0
+      }
+    ]
+  },
+  "limitations": [
+    "No public permit identifier is present, so similar-looking rows cannot be safely deduplicated.",
+    "The source contains issued permit activity, not refused or not-granted applications.",
+    "The source has street names but no street numbers or coordinates; the map is aggregated to municipality boundaries.",
+    "Reported cost is an estimate, not realised expenditure, contract value or revenue.",
+    "Data quality depends on information submitted by building surveyors to the regulator."
+  ]
 }

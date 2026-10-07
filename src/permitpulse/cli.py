@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from permitpulse.pipeline import build_pipeline, download_address_source, download_source
+from permitpulse.statewide_pipeline import build_statewide_pipeline
 
 
 def _date(value: str) -> date:
@@ -43,11 +44,33 @@ def parser() -> argparse.ArgumentParser:
         default=Path("data/raw/street-addresses.csv"),
     )
     _add_build_arguments(refresh)
+
+    statewide = subcommands.add_parser(
+        "build-statewide",
+        help="Build the Victoria dashboard from one or more BPC annual XLSB workbooks.",
+    )
+    statewide.add_argument(
+        "--input",
+        type=Path,
+        action="append",
+        required=True,
+        help="BPC annual workbook. Repeat --input to combine years.",
+    )
+    statewide.add_argument("--output-dir", type=Path, default=Path("data/processed"))
+    statewide.add_argument("--as-of-date", type=_date, default=None)
     return root
 
 
 def main() -> None:
     arguments = parser().parse_args()
+    if arguments.command == "build-statewide":
+        summary = build_statewide_pipeline(
+            arguments.input,
+            arguments.output_dir,
+            arguments.as_of_date,
+        )
+        print(json.dumps(asdict(summary), indent=2))
+        return
     if arguments.command == "refresh":
         source = download_source(arguments.raw_path)
         address_source = download_address_source(arguments.address_raw_path)

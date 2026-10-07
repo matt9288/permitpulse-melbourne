@@ -10,9 +10,10 @@ The public application needs only:
 - `requirements.txt` and `pyproject.toml`;
 - `data/processed/analytic_permits.parquet`;
 - `data/processed/data_quality_results.parquet`; and
-- `data/processed/source_metadata.json`.
+- `data/processed/source_metadata.json`; and
+- `data/reference/victoria_lga_simplified.geojson`.
 
-The raw City of Melbourne downloads, DuckDB database, intermediate tables and quarantine records remain ignored. They are build inputs or audit artefacts rather than application runtime requirements.
+The raw BPC annual workbooks, legacy City of Melbourne build artefacts, DuckDB database, intermediate tables and quarantine records remain ignored. They are build inputs or audit artefacts rather than application runtime requirements.
 
 The processed data comes from public CC BY sources. Even so, review every tracked file before publishing. The generated public metadata records source filenames, checksums and URLs without local computer paths.
 
@@ -35,7 +36,7 @@ Use the following Streamlit Community Cloud settings:
 3. Create the initial Git commit.
 4. Create a public GitHub repository and push the `main` branch.
 5. Sign in to [Streamlit Community Cloud](https://share.streamlit.io/), create an app and select the settings above.
-6. Verify the hosted default view, Melbourne filter, partial-period behaviour, heat-map tiles, glossary, CSV export and source panel.
+6. Verify the hosted default view, municipality and suburb filters, Vicmap hotspot view, year controls, detailed cost ranges, aggregate CSV export, glossary and source panel.
 7. Add the verified `streamlit.app` URL to the README, portfolio and LinkedIn material.
 
 ## Local verification

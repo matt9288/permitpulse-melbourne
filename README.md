@@ -1,43 +1,54 @@
-# PermitPulse Melbourne
+# PermitPulse Victoria
 
-PermitPulse Melbourne is an open-data portfolio prototype that converts the City of Melbourne building-permits register into a reliable permit-family dataset for analysis and decision support.
+PermitPulse Victoria is an open-data portfolio prototype for exploring statewide building-permit activity. It converts annual Building and Plumbing Commission (BPC) workbooks into a consistent analytical dataset and an interactive Streamlit dashboard.
 
-The project is being developed in stages. Sprint 1 provides the data foundation: source fingerprinting, schema validation, data-quality checks, permit-family normalisation, quarantine records, DuckDB tables and Parquet exports.
+The current public snapshot covers the 2024 and 2025 BPC reporting years. It contains 201,110 source records across 83 local-government and alpine-resort reporting areas.
 
 ## Business problem
 
-The source register mixes building permits, final inspections, occupancy certificates and multiple addresses. Treating each row as an independent project materially overstates activity and estimated value.
+Building-permit activity is useful for market scanning, project planning and local development analysis, but the published annual files are difficult to compare directly. Their column names drift between years, costs can be misinterpreted, and the statewide files do not publish coordinates or a permit identifier.
 
-PermitPulse separates those grains so later application features can support:
+PermitPulse provides:
 
-- permit opportunity exploration by address-derived hotspot, suburb, work type and cost band;
-- transparent certificate-event timelines;
-- review of missing or inconsistent source records; and
-- visible source freshness and data-quality warnings.
+- statewide municipality, region and suburb filtering;
+- a municipality hotspot map using official Vicmap boundaries;
+- year-to-year comparisons of permit-record volume and reported cost;
+- broad and detailed cost ranges selectable in the chart;
+- official nature-of-work and building-use breakdowns;
+- reported new-dwelling and demolition measures;
+- data-quality checks and official annual-total reconciliation; and
+- privacy-conscious aggregate CSV export.
 
-It does **not** claim to identify construction delays, legal non-compliance, realised expenditure or the complete Greater Melbourne development pipeline.
+This is a decision-support prototype, not a regulatory register, project-lead service or construction forecast.
 
-## Data source
+## Data sources
 
-- Publisher: City of Melbourne
-- Dataset: [Building Permits](https://data.melbourne.vic.gov.au/explore/dataset/building-permits/)
-- Map coordinates: [Street addresses](https://data.melbourne.vic.gov.au/explore/dataset/street-addresses/)
-- Licence: CC BY
-- Geographic scope: City of Melbourne municipality, not metropolitan Melbourne
+- Publisher: Building and Plumbing Commission, formerly the Victorian Building Authority
+- Permit data: [Building Permit Activity Data](https://discover.data.vic.gov.au/dataset/building-permit-activity-data)
+- Data notes and annual files: [BPC research, reports and data](https://www.bpc.vic.gov.au/about-bpc/research-reports-and-data/data)
+- Map boundaries: [Vicmap Admin REST API](https://discover.data.vic.gov.au/dataset/vicmap-admin-rest-api)
+- Licence: Creative Commons Attribution 4.0
 
-Raw source files are not committed to Git. The build records the input checksum, size, extraction time and analysis date.
+Raw workbooks are not committed. The repository includes only the processed public dashboard bundle and a simplified copy of the official municipality boundaries.
+
+## Critical interpretation rules
+
+- A dashboard count is a **permit record**, not a unique permit. The public annual files do not include a permit identifier, so similar-looking rows are retained rather than guessed away.
+- The primary time field is the BPC levy reporting month and year. Permit issue date is retained separately and may fall outside that period.
+- `Reported_Cost_of_works` is used for additive cost analysis. `Total_Estimated_Cost_of_Works__c` can repeat a whole-project value across stages and is not summed.
+- Reported cost is an estimate, not realised expenditure, contract value, revenue or current market value.
+- The source covers issued permit activity. It does not contain refused or not-granted applications.
+- The statewide source has street names but no street numbers or coordinates. The map is therefore aggregated to official municipality boundaries.
 
 ## Technology
 
 - Python and pandas for ingestion and validation
-- DuckDB for the analytical model
-- Parquet for compact application-ready outputs
-- Streamlit and Plotly for the Opportunity Explorer
+- `python-calamine` for free XLSB reading
+- DuckDB and Parquet for compact analytical storage
+- Streamlit and Plotly for the dashboard
 - pytest and Ruff for automated checks
 
-All Sprint 1 dependencies are open-source and require no paid services.
-
-For the hosted application, `requirements.txt` pins the tested runtime versions and installs the local `permitpulse` package.
+All application components are open-source and require no paid API or service.
 
 ## Setup
 
@@ -48,83 +59,47 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 ```
 
-## Build from an existing source snapshot
+## Build the statewide snapshot
+
+Download the annual BPC XLSB files through the official DataVic page, then run:
 
 ```bash
-permitpulse build \
-  --input /path/to/building-permits.csv \
-  --address-input /path/to/street-addresses.csv \
+permitpulse build-statewide \
+  --input /path/to/VBA-DataVic-Building-Permits-2024-December.xlsb \
+  --input /path/to/20260079-Rawdata-December-2025.xlsb \
   --output-dir data/processed \
-  --as-of-date 2026-10-01
+  --as-of-date 2026-10-07
 ```
 
-The explicit `--as-of-date` makes future-date and freshness checks reproducible. If omitted, the local calendar date is used.
+Repeat `--input` for each annual workbook. The pipeline detects the data sheet, handles the known 2024/2025 street-column schema difference, validates required fields and records file checksums.
 
-## Download the current open file and build
+The earlier City of Melbourne build commands remain in the codebase for reproducibility of the first project phase, but the deployed application uses the statewide build.
 
-```bash
-permitpulse refresh \
-  --raw-path data/raw/building-permits.csv \
-  --output-dir data/processed
-```
+## Runtime outputs
 
-This command requires internet access. It replaces only the configured raw snapshot after a successful download.
+- `data/processed/analytic_permits.parquet` — public-safe analytical source records;
+- `data/processed/data_quality_results.parquet` — quality and reconciliation checks;
+- `data/processed/source_metadata.json` — provenance, scope and limitations; and
+- `data/reference/victoria_lga_simplified.geojson` — simplified official LGA boundaries.
 
-## Outputs
+Builder location fields from the raw source are not included in the public runtime bundle. The dashboard also avoids raw street-level export.
 
-The build creates:
-
-- `permitpulse.duckdb` — inspectable analytical database;
-- `permit_families.parquet` — one record per observed building-permit reference;
-- `analytic_permits.parquet` — permit families that pass high-severity checks;
-- `certificate_events.parquet` — deduplicated permit and certificate events;
-- `permit_addresses.parquet` — distinct addresses linked to permit references;
-- `quarantine_records.parquet` — source rows and permit families requiring review;
-- `data_quality_results.parquet` — data-quality results and reconciliation metrics; and
-- `source_metadata.json` — source provenance and build summary.
-
-## Verification
+## Run and verify
 
 ```bash
-pytest
 ruff check .
-```
-
-## Run the Opportunity Explorer
-
-Build the processed data first, then run:
-
-```bash
+pytest
 streamlit run app.py
 ```
 
-The default dashboard period is 2018–2025 because the recent 2026 source partition appears incomplete. Filters apply consistently to the heat map, suburb opportunity profile, headline measures, charts, records table and CSV download. The profile compares the latest two complete calendar years inside the selected date range; when two complete years are unavailable, it shows selected-period measures without a growth claim.
-
-The estimated-cost section reaggregates one chart between broad market ranges and the complete detailed breakdown. Users can compare permit count or total source-reported estimated cost for any two complete calendar years inside the active date range. The supporting table shows changes relative to the selected baseline year and the focus-year median estimated cost. An in-dashboard metric glossary documents each measure, formula or rule, and its main interpretation limitation.
-
-The map does not use a paid geocoder. It joins permit addresses to the City of Melbourne's open street-address points. Exact street-number matches use official point locations; number ranges use the centroid of official address points within the range on the same street and suburb. Unmatched permits are not plotted.
-
-For the 1 October 2026 discovery snapshot, the pipeline should reconcile 184,858 raw rows to 74,601 unique building-permit references. These are snapshot-specific integration checks, not permanent assumptions about future source files.
-
-The executed Sprint 1 evidence is recorded in [docs/SPRINT_1_VALIDATION.md](docs/SPRINT_1_VALIDATION.md).
-The Opportunity Explorer verification is recorded in [docs/PHASE_2_VALIDATION.md](docs/PHASE_2_VALIDATION.md).
-The hotspot-map verification is recorded in [docs/PHASE_3_MAP_VALIDATION.md](docs/PHASE_3_MAP_VALIDATION.md).
-The detailed cost-analysis verification is recorded in [docs/PHASE_4_COST_VALIDATION.md](docs/PHASE_4_COST_VALIDATION.md).
-
-## Deployment
-
-The repository is prepared for Streamlit Community Cloud using `app.py` as the entrypoint and Python 3.12. Only the three reviewed runtime data files are included; raw source downloads and build artefacts remain excluded. No cloud deployment has been created yet.
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the public-file boundary, deployment settings, verification checklist and refresh workflow.
+The current validation results are documented in [docs/STATEWIDE_VALIDATION.md](docs/STATEWIDE_VALIDATION.md). Deployment guidance is in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Current limitations
 
-- Work categories currently use transparent keyword rules; a labelled and validated classifier is a later phase.
-- Map points represent one primary address per permit family and do not show every parcel or address attached to a permit.
-- Address-range centroids are derived representative locations, not surveyed parcel centroids.
+- Only 2024 and 2025 are in the current statewide runtime snapshot. The pipeline supports additional annual workbooks, but earlier years have not yet been loaded and reconciled.
+- No permit ID means the dashboard cannot prove permit uniqueness or safely deduplicate duplicate-looking rows.
+- No refusal data means the dashboard cannot measure approval probability or refusal risk.
+- Municipality shading can hide within-LGA variation and should not be treated as an address hotspot.
+- Annual values are nominal and not adjusted for inflation or reporting-practice changes.
+- Data quality depends on information submitted by building surveyors to the regulator.
 - The free Carto basemap requires an internet connection in the viewer; no API key is required.
-- Public deployment is a later phase.
-- A record in the quarantine output is a data-review signal, not evidence of regulatory failure.
-- Estimated costs are source-reported estimates and must not be treated as realised expenditure.
-- Estimated-cost comparisons are nominal and are not adjusted for inflation or changing reporting practices.
-- Recent source periods may be incomplete because the register depends on upstream submissions.
