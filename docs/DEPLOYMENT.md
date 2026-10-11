@@ -1,6 +1,10 @@
 # Streamlit Community Cloud Deployment
 
-PermitPulse is prepared for a public Streamlit Community Cloud deployment but has not been published.
+PermitPulse is publicly deployed on Streamlit Community Cloud:
+
+<https://permitpulse-melbourne-victoria.streamlit.app/>
+
+The deployment uses the public GitHub repository, the `main` branch and `app.py` as its entrypoint. Streamlit redeploys the application after changes are pushed to `main`.
 
 ## Runtime bundle
 

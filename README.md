@@ -2,6 +2,8 @@
 
 PermitPulse Victoria is an open-data portfolio prototype for exploring statewide building-permit activity. It converts annual Building and Plumbing Commission (BPC) workbooks into a consistent analytical dataset and an interactive Streamlit dashboard.
 
+[Open the live PermitPulse Victoria dashboard](https://permitpulse-melbourne-victoria.streamlit.app/)
+
 The current public snapshot covers the 2018–2025 BPC reporting years. It contains 871,267 source records across 87 comparable municipality and alpine-resort groups.
 
 ## Business problem
