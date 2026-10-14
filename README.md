@@ -4,6 +4,13 @@ PermitPulse Victoria is an open-data portfolio prototype for exploring statewide
 
 [Open the live PermitPulse Victoria dashboard](https://permitpulse-melbourne-victoria.streamlit.app/)
 
+Project documentation:
+
+- [Dashboard user guide](docs/DASHBOARD_USER_GUIDE.md)
+- [Portfolio case study](docs/PERMITPULSE_CASE_STUDY.md)
+- [Statewide validation](docs/STATEWIDE_VALIDATION.md)
+- [Deployment guide](docs/DEPLOYMENT.md)
+
 The current public snapshot covers the 2018–2025 BPC reporting years. It contains 871,267 source records across 87 comparable municipality and alpine-resort groups.
 
 ## Business problem
