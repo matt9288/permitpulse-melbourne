@@ -532,6 +532,9 @@ def build_statewide_pipeline(
         "source_dataset": "Building Permit Activity Data",
         "source_url": DATASET_URL,
         "publisher_url": BPC_DATA_URL,
+        "refresh_policy": (
+            "Manual refresh after a new annual BPC workbook is released and validated."
+        ),
         "licence": "Creative Commons Attribution 4.0",
         "data_model": (
             "One row per source-reported permit activity record. The public files do not include "

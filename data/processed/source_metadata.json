@@ -6,6 +6,7 @@
   "source_dataset": "Building Permit Activity Data",
   "source_url": "https://discover.data.vic.gov.au/dataset/building-permit-activity-data",
   "publisher_url": "https://www.bpc.vic.gov.au/about-bpc/research-reports-and-data/data",
+  "refresh_policy": "Manual refresh after a new annual BPC workbook is released and validated.",
   "licence": "Creative Commons Attribution 4.0",
   "data_model": "One row per source-reported permit activity record. The public files do not include a permit identifier, so records are not deduplicated and are not described as unique permits.",
   "primary_period": "BPC levy reporting month and year. Permit issue date is retained separately and may fall outside the reporting year.",

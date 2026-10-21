@@ -170,6 +170,39 @@ Open **Metric definitions and responsible use** when a term or formula is unclea
 
 Open **Source and data quality** to review the publisher, licence, snapshot date, reporting years, record coverage and validation findings. Consult this section before presenting a result to a stakeholder. It makes missing fields, date differences, duplicate-looking rows and source-reconciliation checks visible.
 
+The source panel links to the official DataVic dataset and BPC publisher page. The dashboard is
+refreshed manually after a new annual BPC workbook is released and validated; the snapshot analysis
+date shows when the current bundle was prepared.
+
+## 10. Ask PermitPulse dashboard guide
+
+### Business questions
+
+- Which view should I use for a particular analysis?
+- What does a dashboard term or calculation mean?
+- What do the active sidebar filters currently contain?
+- Can this dataset support the question I want to answer?
+
+### How to use the assistant
+
+Open **Ask PermitPulse — dashboard guide** below the headline metrics. Select a suggested question or
+type a question of up to 500 characters. The assistant uses the active sidebar filters and aggregate
+results. Changing a sidebar filter clears the conversation so older answers are not confused with the
+new scope.
+
+When a Groq API key is configured, up to five questions per browser session can receive
+natural-language explanations from `openai/gpt-oss-20b`. Without a key, after the session limit, or
+when Groq is unavailable, the built-in guide answers supported questions without an external API.
+
+The assistant receives aggregate summaries only. It does not receive the complete dataset, source
+record identifiers or raw permit rows. Do not enter personal, confidential or commercially sensitive
+information. Treat AI wording as an explanation aid and confirm numerical claims against the
+dashboard views.
+
+The assistant will refuse questions outside the dataset's evidence, including refusal risk,
+forecasts, realised construction costs, builder performance, property prices and exact-address
+hotspots.
+
 ## Suggested analysis workflows
 
 ### Find an active local market

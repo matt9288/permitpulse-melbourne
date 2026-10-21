@@ -25,7 +25,8 @@ PermitPulse provides:
 - broad and detailed cost ranges selectable in the chart;
 - official nature-of-work and building-use breakdowns;
 - reported new-dwelling and demolition measures;
-- data-quality checks and official annual-total reconciliation; and
+- data-quality checks and official annual-total reconciliation;
+- an aggregate-only dashboard guide with optional Groq explanations and a free fallback; and
 - privacy-conscious aggregate CSV export.
 
 This is a decision-support prototype, not a regulatory register, project-lead service or construction forecast.
@@ -57,9 +58,12 @@ Raw workbooks are not committed. The repository includes only the processed publ
 - `python-calamine` for free XLSB reading
 - DuckDB and Parquet for compact analytical storage
 - Streamlit and Plotly for the dashboard
+- Groq `openai/gpt-oss-20b` for optional natural-language explanations
 - pytest and Ruff for automated checks
 
-All application components are open-source and require no paid API or service.
+The dashboard and built-in guide require no paid API or service. Groq enhancement is optional and
+uses the provider's Free Plan within its current request limits. Free-tier availability and limits
+can change; when Groq is unavailable, the built-in guide remains active.
 
 ## Setup
 
@@ -69,6 +73,27 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e '.[dev]'
 ```
+
+### Optional Groq assistant
+
+The assistant works without an API key in built-in guide mode. To add free-tier natural-language
+answers, create a Groq API key and copy the example secrets file:
+
+```bash
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+```
+
+Replace the placeholder value in `.streamlit/secrets.toml`. The real secrets file is ignored by Git
+and must never be committed. The public deployment key belongs in Streamlit Community Cloud's
+Secrets settings as:
+
+```toml
+GROQ_API_KEY = "your-key"
+```
+
+The application sends only aggregate summaries for the active filters. It does not send raw permit
+rows, record identifiers or the full Parquet dataset. It permits at most five Groq questions per
+browser session and falls back to deterministic guidance after that limit or when the API fails.
 
 ## Build the statewide snapshot
 
@@ -124,3 +149,5 @@ The current validation results are documented in [docs/STATEWIDE_VALIDATION.md](
 - Annual values are nominal and not adjusted for inflation or reporting-practice changes.
 - Data quality depends on information submitted by building surveyors to the regulator.
 - The free Carto basemap requires an internet connection in the viewer; no API key is required.
+- Groq's free tier is quota-limited and not guaranteed to remain free. AI answers can still be
+  incorrect, so they are constrained to aggregate context and should be checked against the charts.

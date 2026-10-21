@@ -31,7 +31,7 @@ Use the following Streamlit Community Cloud settings:
 | Branch | `main` |
 | Entrypoint | `app.py` |
 | Python | 3.12 |
-| Secrets | None required |
+| Secrets | Optional `GROQ_API_KEY`; the built-in guide works without it |
 
 ## Deployment workflow
 
@@ -40,8 +40,10 @@ Use the following Streamlit Community Cloud settings:
 3. Create the initial Git commit.
 4. Create a public GitHub repository and push the `main` branch.
 5. Sign in to [Streamlit Community Cloud](https://share.streamlit.io/), create an app and select the settings above.
-6. Verify the hosted default view, municipality and suburb filters, Vicmap hotspot view, year controls, detailed cost ranges, aggregate CSV export, glossary and source panel.
-7. Add the verified `streamlit.app` URL to the README, portfolio and LinkedIn material.
+6. Optionally add `GROQ_API_KEY = "your-key"` in the app's Streamlit Secrets settings. Never add the key to GitHub.
+7. Verify the hosted default view, municipality and suburb filters, Vicmap hotspot view, year controls, detailed cost ranges, assistant fallback, aggregate CSV export, glossary and source panel.
+8. If Groq is configured, ask one supported question and one unsupported question. Confirm the supported answer states its scope and the unsupported answer refuses to invent evidence.
+9. Add the verified `streamlit.app` URL to the README, portfolio and LinkedIn material.
 
 ## Local verification
 
@@ -59,3 +61,8 @@ Refresh and validate the source data locally. Commit only the regenerated runtim
 ## Hosting limitations
 
 Community Cloud applications can sleep after inactivity and are subject to shared resource limits. PermitPulse is a portfolio prototype and should not be described as a continuously available production service.
+
+Groq enhancement uses a provider-managed free quota, currently limited by requests and tokens. The
+dashboard limits Groq use to five questions per browser session and falls back to the built-in guide,
+but a public user can start another session. This is a demonstration control, not a secure global
+usage cap. Keep the Groq account on the Free Plan if zero spend is a strict requirement.

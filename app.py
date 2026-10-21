@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from permitpulse.assistant import (
+    MAX_AI_QUESTIONS_PER_SESSION,
+    MAX_QUESTION_CHARACTERS,
+    SUGGESTED_QUESTIONS,
+    answer_dashboard_question,
+    build_assistant_context,
+)
 from permitpulse.dashboard import DETAILED_COST_BAND_ORDER, load_parquet
 from permitpulse.pipeline import COST_BAND_ORDER
 from permitpulse.statewide_dashboard import (
@@ -53,6 +61,16 @@ def currency(value: float | None) -> str:
     if abs(value) >= 1_000:
         return f"${value / 1_000:,.0f}k"
     return f"${value:,.0f}"
+
+
+def groq_api_key() -> str:
+    environment_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if environment_key:
+        return environment_key
+    try:
+        return str(st.secrets.get("GROQ_API_KEY", "")).strip()
+    except FileNotFoundError:
+        return ""
 
 
 st.set_page_config(page_title="PermitPulse Victoria", page_icon="🏗️", layout="wide")
@@ -147,6 +165,86 @@ kpi_columns[4].metric(
         "filtered records. The field is unavailable for 2018–2019."
     ),
 )
+
+assistant_scope_key = json.dumps(
+    {
+        "start_date": filters.start_date.isoformat(),
+        "end_date": filters.end_date.isoformat(),
+        "regions": filters.regions,
+        "municipalities": filters.municipalities,
+        "suburbs": filters.suburbs,
+        "cost_bands": filters.cost_bands,
+        "nature_of_work": filters.nature_of_work,
+        "building_uses": filters.building_uses,
+        "text_query": filters.text_query,
+    },
+    sort_keys=True,
+)
+if st.session_state.get("permitpulse_assistant_scope") != assistant_scope_key:
+    st.session_state["permitpulse_assistant_scope"] = assistant_scope_key
+    st.session_state["permitpulse_assistant_messages"] = []
+if "permitpulse_groq_questions_used" not in st.session_state:
+    st.session_state["permitpulse_groq_questions_used"] = 0
+
+with st.expander("Ask PermitPulse — dashboard guide"):
+    api_key = groq_api_key()
+    ai_questions_used = st.session_state.get("permitpulse_groq_questions_used", 0)
+    if api_key:
+        remaining_questions = max(0, MAX_AI_QUESTIONS_PER_SESSION - ai_questions_used)
+        st.caption(
+            f"Groq-enhanced answers are available for {remaining_questions} more questions in this "
+            "browser session. Unsupported or unavailable questions use the built-in guide."
+        )
+    else:
+        st.caption(
+            "The built-in guide is active. Add a Groq API key in Streamlit Secrets to enable "
+            "natural-language answers."
+        )
+    st.caption(
+        "Answers use aggregate results from the active sidebar filters. Do not enter personal, "
+        "confidential or commercially sensitive information."
+    )
+
+    messages = st.session_state.get("permitpulse_assistant_messages", [])
+    for message in messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message.get("mode"):
+                st.caption(message["mode"])
+
+    suggested_question = None
+    suggestion_columns = st.columns(len(SUGGESTED_QUESTIONS))
+    for index, (column, prompt) in enumerate(zip(suggestion_columns, SUGGESTED_QUESTIONS)):
+        if column.button(prompt, key=f"assistant_suggestion_{index}", width="stretch"):
+            suggested_question = prompt
+
+    typed_question = st.chat_input(
+        "Ask about a metric, view, current filters or data limitation",
+        key="permitpulse_assistant_question",
+        max_chars=MAX_QUESTION_CHARACTERS,
+    )
+    question = typed_question or suggested_question
+    if question:
+        assistant_context = build_assistant_context(filtered, filters, metadata)
+        messages.append({"role": "user", "content": question})
+        with st.chat_message("user"):
+            st.markdown(question)
+
+        result = answer_dashboard_question(
+            question,
+            assistant_context,
+            api_key=api_key,
+            ai_questions_used=ai_questions_used,
+        )
+        if result.used_groq:
+            st.session_state["permitpulse_groq_questions_used"] = ai_questions_used + 1
+        messages.append(
+            {"role": "assistant", "content": result.text, "mode": result.mode}
+        )
+        st.session_state["permitpulse_assistant_messages"] = messages
+        with st.chat_message("assistant"):
+            st.markdown(result.text)
+            st.caption(result.mode)
 
 st.subheader("Statewide permit hotspots")
 map_measure = st.radio(
@@ -474,11 +572,24 @@ with st.expander("Metric definitions and responsible use"):
 
 with st.expander("Source and data quality"):
     summary = metadata.get("summary", {})
+    source_name = metadata.get("source_dataset", "Unavailable")
+    source_url = metadata.get("source_url", "")
+    publisher_url = metadata.get("publisher_url", "")
+    source_display = f"[{source_name}]({source_url})" if source_url else source_name
+    publisher_display = (
+        f"[Building and Plumbing Commission]({publisher_url})"
+        if publisher_url
+        else "Building and Plumbing Commission"
+    )
+    refresh_policy = metadata.get(
+        "refresh_policy",
+        "Manual refresh after a new annual BPC workbook is released and validated.",
+    )
     st.markdown(
-        f"**Source:** {metadata.get('source_dataset', 'Unavailable')} — Building and "
-        "Plumbing Commission  \n"
+        f"**Source:** {source_display} — {publisher_display}  \n"
         f"**Licence:** {metadata.get('licence', 'Unavailable')}  \n"
         f"**Snapshot analysis date:** {metadata.get('as_of_date', 'Unavailable')}  \n"
+        f"**Refresh approach:** {refresh_policy}  \n"
         f"**Reporting years:** {', '.join(map(str, summary.get('report_years', [])))}  \n"
         f"**Permit records:** {summary.get('records', 0):,}  \n"
         f"**Municipalities:** {summary.get('municipalities', 0):,}  \n"
