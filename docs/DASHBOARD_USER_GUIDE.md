@@ -185,10 +185,11 @@ date shows when the current bundle was prepared.
 
 ### How to use the assistant
 
-Open **Ask PermitPulse — dashboard guide** below the headline metrics. Select a suggested question or
-type a question of up to 500 characters. The assistant uses the active sidebar filters and aggregate
-results. Changing a sidebar filter clears the conversation so older answers are not confused with the
-new scope.
+Select **💬 Ask PermitPulse** at the top of the sidebar to open the assistant in a dialog from anywhere
+in the dashboard. Select a suggested question or type a question of up to 500 characters. The
+assistant uses the active sidebar filters and aggregate results. Changing a sidebar filter clears the
+conversation so older answers are not confused with the new scope. On a narrow screen, open the
+collapsed sidebar first to access the assistant button.
 
 When a Groq API key is configured, up to five questions per browser session can receive
 natural-language explanations from `openai/gpt-oss-20b`. Without a key, after the session limit, or

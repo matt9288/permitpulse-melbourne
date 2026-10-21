@@ -74,6 +74,14 @@ def groq_api_key() -> str:
         return ""
 
 
+def open_assistant_dialog() -> None:
+    st.session_state["permitpulse_assistant_open"] = True
+
+
+def close_assistant_dialog() -> None:
+    st.session_state["permitpulse_assistant_open"] = False
+
+
 st.set_page_config(page_title="PermitPulse Victoria", page_icon="🏗️", layout="wide")
 st.title("PermitPulse Victoria")
 st.caption(
@@ -90,6 +98,12 @@ except (FileNotFoundError, json.JSONDecodeError) as error:
 minimum_period = permits["report_month"].min().date()
 maximum_period = (permits["report_month"].max() + pd.offsets.MonthEnd(0)).date()
 
+st.sidebar.button(
+    "💬 Ask PermitPulse",
+    type="primary",
+    width="stretch",
+    on_click=open_assistant_dialog,
+)
 st.sidebar.header("Filters")
 selected_dates = st.sidebar.date_input(
     "BPC reporting period",
@@ -187,7 +201,14 @@ if st.session_state.get("permitpulse_assistant_scope") != assistant_scope_key:
 if "permitpulse_groq_questions_used" not in st.session_state:
     st.session_state["permitpulse_groq_questions_used"] = 0
 
-with st.expander("Ask PermitPulse — dashboard guide"):
+
+@st.dialog(
+    "Ask PermitPulse",
+    width="large",
+    icon="💬",
+    on_dismiss=close_assistant_dialog,
+)
+def show_assistant_dialog() -> None:
     api_key = groq_api_key()
     ai_questions_used = st.session_state.get("permitpulse_groq_questions_used", 0)
     if api_key:
@@ -246,6 +267,10 @@ with st.expander("Ask PermitPulse — dashboard guide"):
         with st.chat_message("assistant"):
             st.markdown(escape_streamlit_markdown(result.text))
             st.caption(result.mode)
+
+
+if st.session_state.get("permitpulse_assistant_open", False):
+    show_assistant_dialog()
 
 st.subheader("Statewide permit hotspots")
 map_measure = st.radio(

@@ -103,11 +103,8 @@ def test_deployment_entrypoint_loads_from_repository_root() -> None:
     assert any(
         expander.label == "Metric definitions and responsible use" for expander in app.expander
     )
-    assert any(expander.label == "Ask PermitPulse — dashboard guide" for expander in app.expander)
-    assert any(
-        chat_input.placeholder == "Ask about a metric, view, current filters or data limitation"
-        for chat_input in app.chat_input
-    )
+    assert any(button.label == "💬 Ask PermitPulse" for button in app.button)
+    assert not app.chat_input
 
 
 def test_cost_view_accepts_detailed_aggregation_and_non_adjacent_years() -> None:
@@ -142,6 +139,12 @@ def test_cost_view_accepts_detailed_aggregation_and_non_adjacent_years() -> None
 def test_built_in_dashboard_guide_answers_without_a_groq_key() -> None:
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
 
+    next(button for button in app.button if button.label == "💬 Ask PermitPulse").click()
+    app.run()
+    assert any(
+        chat_input.placeholder == "Ask about a metric, view, current filters or data limitation"
+        for chat_input in app.chat_input
+    )
     app.chat_input[0].set_value("Summarise the current filters")
     app.run()
 
