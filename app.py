@@ -14,6 +14,7 @@ from permitpulse.assistant import (
     SUGGESTED_QUESTIONS,
     answer_dashboard_question,
     build_assistant_context,
+    escape_streamlit_markdown,
 )
 from permitpulse.dashboard import DETAILED_COST_BAND_ORDER, load_parquet
 from permitpulse.pipeline import COST_BAND_ORDER
@@ -208,7 +209,7 @@ with st.expander("Ask PermitPulse — dashboard guide"):
     messages = st.session_state.get("permitpulse_assistant_messages", [])
     for message in messages:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            st.markdown(escape_streamlit_markdown(message["content"]))
             if message.get("mode"):
                 st.caption(message["mode"])
 
@@ -243,7 +244,7 @@ with st.expander("Ask PermitPulse — dashboard guide"):
         )
         st.session_state["permitpulse_assistant_messages"] = messages
         with st.chat_message("assistant"):
-            st.markdown(result.text)
+            st.markdown(escape_streamlit_markdown(result.text))
             st.caption(result.mode)
 
 st.subheader("Statewide permit hotspots")

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from io import BytesIO
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 import pandas as pd
 
@@ -11,6 +13,7 @@ from permitpulse.assistant import (
     answer_dashboard_question,
     build_assistant_context,
     deterministic_answer,
+    escape_streamlit_markdown,
     request_groq_answer,
 )
 from permitpulse.statewide_dashboard import StatewideFilters
@@ -94,6 +97,9 @@ def test_groq_request_sends_only_the_aggregate_context() -> None:
     sent_text = json.dumps(payload)
     assert answer == "A grounded aggregate answer."
     assert payload["model"] == "openai/gpt-oss-20b"
+    assert payload["max_completion_tokens"] == 1024
+    assert payload["include_reasoning"] is False
+    assert [message["role"] for message in payload["messages"]] == ["user"]
     assert "record_id" not in sent_text
     assert "private-row-a" not in sent_text
     assert "test-key" not in sent_text
@@ -111,3 +117,29 @@ def test_session_limit_uses_the_free_built_in_guide_without_calling_groq() -> No
     call.assert_not_called()
     assert not result.used_groq
     assert "session AI limit reached" in result.mode
+
+
+def test_groq_authentication_failure_is_actionable_and_keeps_the_fallback() -> None:
+    http_error = HTTPError(
+        url="https://api.groq.com/openai/v1/chat/completions",
+        code=401,
+        msg="Unauthorized",
+        hdrs=None,
+        fp=BytesIO(b'{"error":{"message":"invalid key"}}'),
+    )
+    with patch("permitpulse.assistant.request.urlopen", side_effect=http_error):
+        result = answer_dashboard_question(
+            "Summarise the current filters",
+            _context(),
+            api_key="invalid-test-key",
+        )
+
+    assert not result.used_groq
+    assert "Groq rejected the API key (HTTP 401)" in result.mode
+    assert "3 permit records" in result.text
+
+
+def test_currency_is_escaped_for_streamlit_markdown_without_double_escaping() -> None:
+    assert escape_streamlit_markdown("Costs are $10m and \\$5m.") == (
+        "Costs are \\$10m and \\$5m."
+    )

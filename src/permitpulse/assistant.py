@@ -187,6 +187,25 @@ def _currency(value: int | float | None) -> str:
     return f"${value:,.0f}"
 
 
+def escape_streamlit_markdown(text: str) -> str:
+    """Prevent currency markers from being interpreted as inline maths."""
+    return re.sub(r"(?<!\\)\$", r"\\$", text)
+
+
+def _groq_http_error_message(status_code: int) -> str:
+    messages = {
+        400: "Groq rejected the request (HTTP 400)",
+        401: "Groq rejected the API key (HTTP 401)",
+        403: "Groq model access is not permitted (HTTP 403)",
+        413: "Groq rejected the request size (HTTP 413)",
+        429: "Groq free-plan limit reached (HTTP 429)",
+        498: "Groq capacity is temporarily unavailable (HTTP 498)",
+    }
+    if status_code >= 500:
+        return f"Groq service is temporarily unavailable (HTTP {status_code})"
+    return messages.get(status_code, f"Groq request failed (HTTP {status_code})")
+
+
 def guardrail_response(question: str, context: dict[str, Any]) -> str | None:
     normalised = question.casefold()
     security_terms = (
@@ -352,7 +371,7 @@ def request_groq_answer(
     if len(clean_question) > MAX_QUESTION_CHARACTERS:
         raise ValueError(f"Question must be {MAX_QUESTION_CHARACTERS} characters or fewer.")
 
-    system_prompt = (
+    instructions = (
         "You are PermitPulse Guide, a cautious assistant for a Victorian building-permit "
         "dashboard. "
         "Answer only from the aggregate JSON context supplied by the application. Never invent a "
@@ -366,25 +385,27 @@ def request_groq_answer(
         "a short line stating the active scope and source snapshot date. Use Australian English."
     )
     user_prompt = (
+        f"Instructions:\n{instructions}\n\n"
         f"Aggregate dashboard context:\n{json.dumps(context, ensure_ascii=False)}\n\n"
         f"User question: {clean_question}"
     )
     payload = {
         "model": GROQ_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "max_completion_tokens": 450,
+        "messages": [{"role": "user", "content": user_prompt}],
+        "max_completion_tokens": 1024,
         "reasoning_effort": "low",
-        "temperature": 0.1,
+        "include_reasoning": False,
+        "temperature": 0.5,
+        "stream": False,
     }
     api_request = request.Request(
         GROQ_API_URL,
         data=json.dumps(payload).encode("utf-8"),
         headers={
             "Authorization": f"Bearer {api_key.strip()}",
+            "Accept": "application/json",
             "Content-Type": "application/json",
+            "User-Agent": "PermitPulse/0.1",
         },
         method="POST",
     )
@@ -392,9 +413,7 @@ def request_groq_answer(
         with request.urlopen(api_request, timeout=timeout_seconds) as response:
             response_body = response.read().decode("utf-8")
     except error.HTTPError as exc:
-        if exc.code == 429:
-            raise GroqAssistantError("The free Groq request limit has been reached.") from exc
-        raise GroqAssistantError(f"Groq returned HTTP {exc.code}.") from exc
+        raise GroqAssistantError(_groq_http_error_message(exc.code)) from exc
     except (error.URLError, TimeoutError) as exc:
         raise GroqAssistantError("Groq is temporarily unavailable.") from exc
 
@@ -423,10 +442,10 @@ def answer_dashboard_question(
         try:
             answer = request_groq_answer(api_key, question, context)
             return AssistantResult(answer, mode=f"Groq · {GROQ_MODEL}", used_groq=True)
-        except (GroqAssistantError, ValueError):
+        except (GroqAssistantError, ValueError) as exc:
             return AssistantResult(
                 deterministic_answer(question, context),
-                mode="Built-in guide · Groq unavailable",
+                mode=f"Built-in guide · {exc}",
             )
 
     mode = (
