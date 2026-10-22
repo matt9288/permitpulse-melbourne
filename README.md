@@ -31,6 +31,35 @@ PermitPulse provides:
 
 This is a decision-support prototype, not a regulatory register, project-lead service or construction forecast.
 
+## Ask PermitPulse AI guide
+
+Select **💬 Ask PermitPulse** at the top of the dashboard sidebar to open the guide from any
+view. It answers questions using the active filters and the dashboard's aggregate results, so users
+can ask for help without leaving their current analysis.
+
+Useful questions include:
+
+- `Summarise the current filters.`
+- `Compare 2025 with 2024 for permit-record volume and total reported cost.`
+- `Which view should I use to compare municipalities?`
+- `What does reported cost mean?`
+- `Can this dataset measure permit rejection risk?`
+
+The assistant combines two modes:
+
+- **Groq-enhanced answers** use `openai/gpt-oss-20b` for natural-language explanations. The public
+  prototype allows up to five Groq questions per browser session.
+- **Built-in guidance** answers supported questions when Groq is unavailable, not configured or the
+  session limit has been reached.
+
+Only aggregate summaries for the current filter selection are sent to Groq. Raw permit rows, record
+identifiers and the full Parquet dataset are not sent. Guardrails prevent disclosure of credentials
+or hidden configuration and reject questions the source cannot support, including refusal risk,
+forecasts, realised costs, exact-address analysis and property prices.
+
+This is a guided analytical interface, not a general-purpose chatbot. Its answers can still be
+incorrect and should be checked against the dashboard charts, metric definitions and source notes.
+
 ## Data sources
 
 - Publisher: Building and Plumbing Commission, formerly the Victorian Building Authority
