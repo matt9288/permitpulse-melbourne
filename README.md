@@ -52,6 +52,29 @@ The assistant combines two modes:
 - **Built-in guidance** answers supported questions when Groq is unavailable, not configured or the
   session limit has been reached.
 
+### AI chatbot technology stack
+
+| Layer | Technology | Role in the assistant |
+| --- | --- | --- |
+| User interface | Streamlit `st.dialog`, `st.chat_input` and `st.chat_message` | Opens the assistant from the sidebar and displays the conversation without leaving the dashboard. |
+| Analytical context | Python and pandas | Converts the active dashboard filters into a small set of aggregate metrics, annual summaries and category breakdowns. |
+| Language model | Groq API with `openai/gpt-oss-20b` | Produces natural-language explanations from the supplied aggregate context. |
+| API integration | Python standard-library `urllib` | Sends the HTTPS request directly to Groq, avoiding an additional SDK dependency. |
+| Fallback | Deterministic Python responses | Keeps core metric, source and navigation guidance available when Groq cannot be used. |
+| Guardrails | Python request checks and constrained model instructions | Blocks credential requests and unsupported questions such as rejection risk, forecasts and exact-address analysis. |
+| Session control | Streamlit Session State | Retains the conversation, resets it when filters change and limits Groq use to five questions per browser session. |
+| Secrets | Streamlit Secrets or the `GROQ_API_KEY` environment variable | Keeps the API key out of source control and the browser. |
+| Testing | pytest with mocked Groq responses | Checks aggregate-only context, refusal behaviour, fallback handling and API-error messages without making live model calls. |
+| Hosting | Streamlit Community Cloud | Runs the public dashboard and reads the deployment secret. |
+
+The request flow is:
+
+`active filters → pandas aggregates → compact JSON context → guardrail check → Groq or built-in fallback → Streamlit dialog`
+
+This is deliberately a lightweight implementation. It does not use LangChain, an agent framework,
+a vector database or retrieval-augmented generation because the assistant answers from the
+dashboard's current structured aggregates rather than a separate document library.
+
 Only aggregate summaries for the current filter selection are sent to Groq. Raw permit rows, record
 identifiers and the full Parquet dataset are not sent. Guardrails prevent disclosure of credentials
 or hidden configuration and reject questions the source cannot support, including refusal risk,
