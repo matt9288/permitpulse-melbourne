@@ -132,6 +132,28 @@ def _normalise_text(series: pd.Series, upper: bool = False) -> pd.Series:
     return values.str.upper() if upper else values
 
 
+BUILDING_USE_LABELS = {
+    label.casefold(): label
+    for label in (
+        "Commercial",
+        "Domestic",
+        "Hospital/Healthcare",
+        "Industrial",
+        "Public Buildings",
+        "Residential",
+        "Retail",
+        "Unavailable in source year",
+    )
+}
+
+
+def normalise_building_use(series: pd.Series) -> pd.Series:
+    """Collapse source capitalisation variants into stable dashboard labels."""
+    values = _normalise_text(series)
+    canonical = values.str.casefold().map(BUILDING_USE_LABELS)
+    return canonical.fillna(values).fillna("Unavailable in source year").astype("string")
+
+
 def _excel_engine(path: Path) -> str:
     return "pyxlsb" if path.suffix.lower() == ".xlsb" else "calamine"
 
@@ -260,9 +282,7 @@ def read_statewide_workbook(path: Path) -> tuple[pd.DataFrame, dict[str, object]
     )
     frame["region"] = _normalise_text(frame["region"])
     frame["sub_region"] = _normalise_text(frame["sub_region"])
-    frame["building_use"] = _normalise_text(frame["building_use"]).fillna(
-        "Unavailable in source year"
-    )
+    frame["building_use"] = normalise_building_use(frame["building_use"])
     frame["bca_class"] = _normalise_text(frame["bca_class"])
     frame["nature_of_work_code"] = _normalise_text(frame["nature_of_work_code"]).str.replace(
         r"\.0$", "", regex=True

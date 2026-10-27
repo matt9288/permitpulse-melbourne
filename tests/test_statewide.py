@@ -10,7 +10,11 @@ from permitpulse.statewide_dashboard import (
     municipality_map_summary,
     municipality_summary,
 )
-from permitpulse.statewide_pipeline import _parse_excel_date, municipality_map_name
+from permitpulse.statewide_pipeline import (
+    _parse_excel_date,
+    municipality_map_name,
+    normalise_building_use,
+)
 
 
 def _records() -> pd.DataFrame:
@@ -106,3 +110,27 @@ def test_legacy_excel_serial_dates_are_parsed_without_1970_nanosecond_dates() ->
     assert parsed.iloc[0].year == 2020
     assert pd.isna(parsed.iloc[1])
     assert pd.isna(parsed.iloc[2])
+
+
+def test_building_use_capitalisation_variants_are_merged() -> None:
+    normalised = normalise_building_use(
+        pd.Series(
+            [
+                "Public Buildings",
+                "Public buildings",
+                "public Buildings",
+                " commercial ",
+                "Unexpected source label",
+                None,
+            ]
+        )
+    )
+
+    assert normalised.tolist() == [
+        "Public Buildings",
+        "Public Buildings",
+        "Public Buildings",
+        "Commercial",
+        "Unexpected source label",
+        "Unavailable in source year",
+    ]
