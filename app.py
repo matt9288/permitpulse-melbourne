@@ -391,25 +391,30 @@ else:
         municipalities.head(25),
         hide_index=True,
         width="stretch",
+        placeholder="—",
         column_config={
             "municipality": "Municipality",
-            "focus_records": st.column_config.NumberColumn(f"{profile_year} records", format="%d"),
+            "focus_records": st.column_config.NumberColumn(
+                f"{profile_year} records", format="%,d"
+            ),
             "baseline_records": st.column_config.NumberColumn(
                 f"{profile_baseline} records" if profile_baseline else "Baseline records",
-                format="%d",
+                format="%,d",
             ),
             "record_change": st.column_config.NumberColumn("Record change", format="percent"),
             "total_reported_cost": st.column_config.NumberColumn(
-                "Total reported cost", format="$%.0f"
+                "Total reported cost", format="$%,.0f"
             ),
             "median_reported_cost": st.column_config.NumberColumn(
-                "Median reported cost", format="$%.0f"
+                "Median reported cost", format="$%,.0f"
             ),
-            "high_value_records": st.column_config.NumberColumn("Records above $10m", format="%d"),
+            "high_value_records": st.column_config.NumberColumn(
+                "Records above $10m", format="%,d"
+            ),
             "high_value_share": st.column_config.NumberColumn("High-value share", format="percent"),
-            "new_dwellings": st.column_config.NumberColumn("New dwellings", format="%d"),
+            "new_dwellings": st.column_config.NumberColumn("New dwellings", format="%,d"),
             "dwellings_demolished": st.column_config.NumberColumn(
-                "Dwellings demolished", format="%d"
+                "Dwellings demolished", format="%,d"
             ),
         },
     )
@@ -552,18 +557,27 @@ if len(available_years) >= 2:
         comparison,
         hide_index=True,
         width="stretch",
+        placeholder="—",
         column_config={
             "cost_range": "Reported-cost range",
-            "focus_records": st.column_config.NumberColumn(f"{focus_year} records", format="%d"),
+            "focus_records": st.column_config.NumberColumn(
+                f"{focus_year} records", format="%,d"
+            ),
             "baseline_records": st.column_config.NumberColumn(
-                f"{baseline_year} records", format="%d"
+                f"{baseline_year} records", format="%,d"
             ),
             "record_change": st.column_config.NumberColumn("Record change", format="percent"),
             "focus_total_reported_cost": st.column_config.NumberColumn(
-                f"{focus_year} total cost", format="$%.0f"
+                f"{focus_year} total cost", format="$%,.0f"
             ),
             "baseline_total_reported_cost": st.column_config.NumberColumn(
-                f"{baseline_year} total cost", format="$%.0f"
+                f"{baseline_year} total cost", format="$%,.0f"
+            ),
+            "focus_median_reported_cost": st.column_config.NumberColumn(
+                f"{focus_year} median cost", format="$%,.0f"
+            ),
+            "baseline_median_reported_cost": st.column_config.NumberColumn(
+                f"{baseline_year} median cost", format="$%,.0f"
             ),
             "reported_cost_change": st.column_config.NumberColumn("Cost change", format="percent"),
         },

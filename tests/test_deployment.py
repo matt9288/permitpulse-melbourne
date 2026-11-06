@@ -106,6 +106,16 @@ def test_deployment_entrypoint_loads_from_repository_root() -> None:
     assert any(button.label == "💬 Ask PermitPulse" for button in app.button)
     assert not app.chat_input
 
+    municipality_table = json.loads(app.dataframe[0].proto.columns)
+    cost_table = json.loads(app.dataframe[1].proto.columns)
+    assert app.dataframe[0].proto.placeholder == "—"
+    assert app.dataframe[1].proto.placeholder == "—"
+    assert municipality_table["total_reported_cost"]["type_config"]["format"] == "$%,.0f"
+    assert municipality_table["focus_records"]["type_config"]["format"] == "%,d"
+    assert cost_table["focus_median_reported_cost"]["label"] == "2025 median cost"
+    assert cost_table["baseline_median_reported_cost"]["label"] == "2024 median cost"
+    assert cost_table["focus_median_reported_cost"]["type_config"]["format"] == "$%,.0f"
+
 
 def test_cost_view_accepts_detailed_aggregation_and_non_adjacent_years() -> None:
     app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
