@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from plotly import graph_objects as go
 
 from permitpulse.assistant import (
     MAX_AI_QUESTIONS_PER_SESSION,
@@ -29,6 +30,7 @@ from permitpulse.statewide_dashboard import (
     monthly_activity,
     municipality_map_summary,
     municipality_summary,
+    unavailable_category_records,
 )
 from permitpulse.statewide_pipeline import normalise_building_use
 
@@ -346,14 +348,22 @@ else:
 municipalities = municipality_summary(filtered, profile_year, profile_baseline)
 if len(selected_municipalities) == 1 and not municipalities.empty:
     profile = municipalities.iloc[0]
-    profile_columns = st.columns(5)
+    profile_columns = st.columns(6)
     activity_delta = None
     if profile_baseline and pd.notna(profile["record_change"]):
         activity_delta = f"{profile['record_change']:+.1%} vs {profile_baseline}"
+    cost_delta = None
+    if profile_baseline and pd.notna(profile["reported_cost_change"]):
+        cost_delta = f"{profile['reported_cost_change']:+.1%} vs {profile_baseline}"
     profile_columns[0].metric(
         f"{profile_year} permit records", f"{int(profile['focus_records']):,}", activity_delta
     )
-    profile_columns[1].metric("Total reported cost", currency(profile["total_reported_cost"]))
+    profile_columns[1].metric(
+        "Total reported cost",
+        currency(profile["total_reported_cost"]),
+        cost_delta,
+        delta_color="off",
+    )
     profile_columns[2].metric("Median reported cost", currency(profile["median_reported_cost"]))
     profile_columns[3].metric(
         "New dwellings",
@@ -364,6 +374,18 @@ if len(selected_municipalities) == 1 and not municipalities.empty:
         ),
     )
     profile_columns[4].metric(
+        "Reported net dwellings",
+        (
+            f"{int(profile['reported_net_dwellings']):,}"
+            if pd.notna(profile["reported_net_dwellings"])
+            else "Unavailable"
+        ),
+        help=(
+            "New dwellings minus dwellings demolished for records where both fields are "
+            f"available. Coverage: {profile['net_dwelling_coverage']:.1%}."
+        ),
+    )
+    profile_columns[5].metric(
         "High-value share", f"{profile['high_value_share']:.1%}", help="Reported cost above $10m"
     )
     municipality_period = filtered.loc[filtered["report_year"] == profile_year]
@@ -388,10 +410,26 @@ else:
         "Select one municipality in the sidebar for its category mix."
     )
     st.dataframe(
-        municipalities.head(25),
+        municipalities.head(25).drop(columns=["net_dwelling_records"]),
         hide_index=True,
         width="stretch",
         placeholder="—",
+        column_order=[
+            "municipality",
+            "focus_records",
+            "baseline_records",
+            "record_change",
+            "total_reported_cost",
+            "baseline_total_reported_cost",
+            "reported_cost_change",
+            "median_reported_cost",
+            "high_value_records",
+            "high_value_share",
+            "new_dwellings",
+            "dwellings_demolished",
+            "reported_net_dwellings",
+            "net_dwelling_coverage",
+        ],
         column_config={
             "municipality": "Municipality",
             "focus_records": st.column_config.NumberColumn(
@@ -403,7 +441,16 @@ else:
             ),
             "record_change": st.column_config.NumberColumn("Record change", format="percent"),
             "total_reported_cost": st.column_config.NumberColumn(
-                "Total reported cost", format="$%,.0f"
+                f"{profile_year} total cost", format="$%,.0f"
+            ),
+            "baseline_total_reported_cost": st.column_config.NumberColumn(
+                f"{profile_baseline} total cost" if profile_baseline else "Baseline total cost",
+                format="$%,.0f",
+            ),
+            "reported_cost_change": st.column_config.NumberColumn(
+                "Total cost change",
+                format="percent",
+                help="Nominal reported-cost change; not adjusted for inflation.",
             ),
             "median_reported_cost": st.column_config.NumberColumn(
                 "Median reported cost", format="$%,.0f"
@@ -416,31 +463,95 @@ else:
             "dwellings_demolished": st.column_config.NumberColumn(
                 "Dwellings demolished", format="%,d"
             ),
+            "reported_net_dwellings": st.column_config.NumberColumn(
+                "Reported net dwellings",
+                format="%,d",
+                help=(
+                    "New dwellings minus dwellings demolished for records where both fields "
+                    "are available."
+                ),
+            ),
+            "net_dwelling_coverage": st.column_config.NumberColumn(
+                "Net-dwelling coverage",
+                format="percent",
+                help="Share of municipality records containing both dwelling fields.",
+            ),
         },
     )
 
 trend = monthly_activity(filtered)
 trend_measure = st.radio("Trend measure", ["Permit records", "Reported cost"], horizontal=True)
 trend_column = "records" if trend_measure == "Permit records" else "reported_cost"
-trend_figure = px.line(
-    trend,
-    x="report_month",
-    y=trend_column,
-    markers=True,
+rolling_column = f"{trend_column}_12m_average"
+value_hover = ",.0f" if trend_column == "records" else "$,.0f"
+trend_figure = go.Figure()
+trend_figure.add_trace(
+    go.Scatter(
+        x=trend["report_month"],
+        y=trend[trend_column],
+        mode="lines+markers",
+        name=f"Monthly {trend_measure.lower()}",
+        line={"color": PLOT_COLOUR, "width": 1.5},
+        marker={"size": 4},
+        hovertemplate=(
+            f"Reporting month: %{{x|%b %Y}}<br>{trend_measure}: %{{y:{value_hover}}}<extra></extra>"
+        ),
+    )
+)
+trend_figure.add_trace(
+    go.Scatter(
+        x=trend["report_month"],
+        y=trend[rolling_column],
+        mode="lines",
+        name="12-month rolling average",
+        line={"color": ACCENT_COLOUR, "width": 3, "dash": "dash"},
+        hovertemplate=(
+            f"Reporting month: %{{x|%b %Y}}<br>12-month average: "
+            f"%{{y:{value_hover}}}<extra></extra>"
+        ),
+    )
+)
+trend_figure.update_layout(
     title=f"{trend_measure} by BPC reporting month",
-    labels={"report_month": "Reporting month", trend_column: trend_measure},
-    color_discrete_sequence=[PLOT_COLOUR],
+    xaxis_title="Reporting month",
+    yaxis_title=trend_measure,
+    hovermode="x unified",
+    margin=dict(l=20, r=20, t=55, b=20),
     template="plotly_white",
 )
-trend_figure.update_layout(hovermode="x unified", margin=dict(l=20, r=20, t=55, b=20))
 trend_figure.update_yaxes(rangemode="tozero")
 if trend_column == "reported_cost":
     trend_figure.update_yaxes(tickprefix="$", separatethousands=True)
 st.plotly_chart(trend_figure, width="stretch")
+st.caption(
+    "The 12-month rolling average uses complete 12-calendar-month windows within the active "
+    "filters. The first 11 months are unavailable; this trend line is descriptive, not a forecast."
+)
 
+hide_unavailable_categories = st.toggle(
+    "Hide unavailable and unknown categories",
+    help=(
+        "Applies only to the three category charts below. Headline metrics, filters and downloads "
+        "remain unchanged."
+    ),
+)
+if hide_unavailable_categories:
+    hidden_suburbs = unavailable_category_records(filtered, "suburb")
+    hidden_work = unavailable_category_records(filtered, "nature_of_work")
+    hidden_uses = unavailable_category_records(filtered, "building_use")
+    st.caption(
+        "Hidden from these charts only: "
+        f"{hidden_suburbs:,} suburb records; {hidden_work:,} nature-of-work records; "
+        f"{hidden_uses:,} building-use records."
+    )
 left, middle, right = st.columns(3)
 with left:
-    suburbs = category_summary(filtered, "suburb", limit=12).sort_values("records")
+    suburbs = category_summary(
+        filtered,
+        "suburb",
+        limit=12,
+        hide_unavailable=hide_unavailable_categories,
+    ).sort_values("records")
     figure = px.bar(
         suburbs,
         x="records",
@@ -453,7 +564,11 @@ with left:
     )
     st.plotly_chart(figure, width="stretch")
 with middle:
-    work = category_summary(filtered, "nature_of_work").sort_values("records")
+    work = category_summary(
+        filtered,
+        "nature_of_work",
+        hide_unavailable=hide_unavailable_categories,
+    ).sort_values("records")
     figure = px.bar(
         work,
         x="records",
@@ -466,7 +581,11 @@ with middle:
     )
     st.plotly_chart(figure, width="stretch")
 with right:
-    uses = category_summary(filtered, "building_use").sort_values("records")
+    uses = category_summary(
+        filtered,
+        "building_use",
+        hide_unavailable=hide_unavailable_categories,
+    ).sort_values("records")
     figure = px.bar(
         uses,
         x="records",

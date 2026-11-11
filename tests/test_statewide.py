@@ -5,10 +5,13 @@ import pandas as pd
 from permitpulse.statewide_dashboard import (
     StatewideFilters,
     apply_statewide_filters,
+    category_summary,
     cost_comparison,
     headline_metrics,
+    monthly_activity,
     municipality_map_summary,
     municipality_summary,
+    unavailable_category_records,
 )
 from permitpulse.statewide_pipeline import (
     _parse_excel_date,
@@ -80,7 +83,44 @@ def test_municipality_summary_and_map_reconcile_to_filtered_records() -> None:
     assert geelong["baseline_records"] == 1
     assert geelong["record_change"] == 0
     assert geelong["new_dwellings"] == 10
+    assert geelong["reported_net_dwellings"] == 9
+    assert geelong["net_dwelling_coverage"] == 1
+    assert geelong["baseline_total_reported_cost"] == 500_000
+    assert geelong["reported_cost_change"] == 39
     assert mapped["records"].sum() == len(frame)
+
+
+def test_reported_net_dwellings_stays_unavailable_without_comparable_fields() -> None:
+    legacy = _records().copy()
+    legacy["report_year"] = 2019
+    legacy["new_dwellings"] = pd.Series([pd.NA] * len(legacy), dtype="Int64")
+
+    profile = municipality_summary(legacy, 2019)
+
+    assert profile["reported_net_dwellings"].isna().all()
+    assert profile["net_dwelling_coverage"].eq(0).all()
+
+
+def test_monthly_activity_uses_complete_calendar_windows_for_12_month_average() -> None:
+    activity = monthly_activity(_records())
+
+    december_2024 = activity.loc[activity["report_month"] == pd.Timestamp("2024-12-01")].iloc[0]
+    assert len(activity) == 14
+    assert activity["records_12m_average"].iloc[:11].isna().all()
+    assert december_2024["records_12m_average"] == 2 / 12
+    assert december_2024["reported_cost_12m_average"] == 600_000 / 12
+
+
+def test_category_summary_can_hide_unknown_and_unavailable_values() -> None:
+    frame = _records().copy()
+    frame["building_use"] = ["Commercial", "Unknown", "Unavailable in source year", pd.NA]
+
+    summary = category_summary(frame, "building_use", hide_unavailable=True)
+
+    assert summary[["building_use", "records"]].to_dict("records") == [
+        {"building_use": "Commercial", "records": 1}
+    ]
+    assert unavailable_category_records(frame, "building_use") == 3
 
 
 def test_statewide_cost_comparison_uses_reporting_year() -> None:

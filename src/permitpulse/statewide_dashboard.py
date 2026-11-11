@@ -8,6 +8,12 @@ import pandas as pd
 from permitpulse.dashboard import DETAILED_COST_BAND_ORDER, detailed_cost_band_values
 from permitpulse.pipeline import COST_BAND_ORDER
 
+UNAVAILABLE_CATEGORY_LABELS = {
+    "unknown",
+    "unavailable",
+    "unavailable in source year",
+}
+
 
 @dataclass(frozen=True)
 class StatewideFilters:
@@ -70,17 +76,56 @@ def headline_metrics(frame: pd.DataFrame) -> dict[str, float | int | None]:
 
 
 def monthly_activity(frame: pd.DataFrame) -> pd.DataFrame:
-    return (
+    activity = (
         frame.dropna(subset=["report_month"])
         .groupby("report_month", as_index=False)
         .agg(records=("record_id", "size"), reported_cost=("estimated_cost", "sum"))
         .sort_values("report_month")
     )
+    if activity.empty:
+        activity["records_12m_average"] = pd.Series(dtype="float64")
+        activity["reported_cost_12m_average"] = pd.Series(dtype="float64")
+        return activity
+
+    calendar_months = pd.date_range(
+        activity["report_month"].min(), activity["report_month"].max(), freq="MS"
+    )
+    activity = (
+        activity.set_index("report_month")
+        .reindex(calendar_months, fill_value=0)
+        .rename_axis("report_month")
+        .reset_index()
+    )
+    activity["records"] = activity["records"].astype("int64")
+    activity["records_12m_average"] = activity["records"].rolling(12, min_periods=12).mean()
+    activity["reported_cost_12m_average"] = (
+        activity["reported_cost"].rolling(12, min_periods=12).mean()
+    )
+    return activity
 
 
-def category_summary(frame: pd.DataFrame, column: str, limit: int | None = None) -> pd.DataFrame:
+def unavailable_category_mask(series: pd.Series) -> pd.Series:
+    values = series.astype("string").fillna("Unknown").str.strip().str.casefold()
+    return values.isin(UNAVAILABLE_CATEGORY_LABELS)
+
+
+def unavailable_category_records(frame: pd.DataFrame, column: str) -> int:
+    return int(unavailable_category_mask(frame[column]).sum())
+
+
+def category_summary(
+    frame: pd.DataFrame,
+    column: str,
+    limit: int | None = None,
+    hide_unavailable: bool = False,
+) -> pd.DataFrame:
+    population = (
+        frame.loc[~unavailable_category_mask(frame[column])].copy()
+        if hide_unavailable
+        else frame
+    )
     summary = (
-        frame.assign(**{column: frame[column].fillna("Unknown")})
+        population.assign(**{column: population[column].fillna("Unknown")})
         .groupby(column, as_index=False, observed=True)
         .agg(records=("record_id", "size"), reported_cost=("estimated_cost", "sum"))
         .sort_values(["records", column], ascending=[False, True])
@@ -152,6 +197,10 @@ def municipality_summary(
     focus = frame.loc[frame["report_year"] == focus_year].copy()
     focus["positive_cost"] = focus["estimated_cost"].where(focus["estimated_cost"] > 0)
     focus["high_value"] = focus["estimated_cost"] > 10_000_000
+    comparable_dwellings = focus["new_dwellings"].notna() & focus["dwellings_demolished"].notna()
+    focus["reported_net_dwellings"] = (
+        focus["new_dwellings"] - focus["dwellings_demolished"]
+    ).where(comparable_dwellings)
     summary = focus.groupby("municipality", as_index=False, observed=True).agg(
         focus_records=("record_id", "size"),
         total_reported_cost=("estimated_cost", "sum"),
@@ -159,22 +208,42 @@ def municipality_summary(
         high_value_records=("high_value", "sum"),
         new_dwellings=("new_dwellings", lambda values: values.sum(min_count=1)),
         dwellings_demolished=("dwellings_demolished", lambda values: values.sum(min_count=1)),
+        reported_net_dwellings=(
+            "reported_net_dwellings",
+            lambda values: values.sum(min_count=1),
+        ),
+        net_dwelling_records=("reported_net_dwellings", "count"),
     )
     summary["high_value_share"] = summary["high_value_records"] / summary["focus_records"]
+    summary["net_dwelling_coverage"] = (
+        summary["net_dwelling_records"] / summary["focus_records"]
+    )
     if baseline_year is not None:
         baseline = (
             frame.loc[frame["report_year"] == baseline_year]
             .groupby("municipality", as_index=False, observed=True)
-            .agg(baseline_records=("record_id", "size"))
+            .agg(
+                baseline_records=("record_id", "size"),
+                baseline_total_reported_cost=("estimated_cost", "sum"),
+            )
         )
         summary = summary.merge(baseline, on="municipality", how="left", validate="one_to_one")
         summary["baseline_records"] = summary["baseline_records"].fillna(0).astype(int)
+        summary["baseline_total_reported_cost"] = summary[
+            "baseline_total_reported_cost"
+        ].fillna(0.0)
         summary["record_change"] = (
             (summary["focus_records"] - summary["baseline_records"]) / summary["baseline_records"]
         ).where(summary["baseline_records"] > 0)
+        summary["reported_cost_change"] = (
+            (summary["total_reported_cost"] - summary["baseline_total_reported_cost"])
+            / summary["baseline_total_reported_cost"]
+        ).where(summary["baseline_total_reported_cost"] > 0)
     else:
         summary["baseline_records"] = pd.NA
+        summary["baseline_total_reported_cost"] = pd.NA
         summary["record_change"] = pd.NA
+        summary["reported_cost_change"] = pd.NA
     return summary.sort_values(
         ["focus_records", "total_reported_cost", "municipality"], ascending=[False, False, True]
     )
@@ -232,6 +301,15 @@ def metric_glossary() -> pd.DataFrame:
                 ),
             },
             {
+                "term": "Total reported cost change",
+                "explanation": "Change in municipality total reported cost between two years.",
+                "formula_or_rule": "(Focus-year total cost / baseline-year total cost) - 1",
+                "use_with_caution": (
+                    "Costs are nominal and can be dominated by a small number of large projects. "
+                    "This is not an inflation-adjusted measure."
+                ),
+            },
+            {
                 "term": "Median positive reported cost",
                 "explanation": (
                     "Middle reported cost after excluding missing, zero and negative values."
@@ -277,6 +355,30 @@ def metric_glossary() -> pd.DataFrame:
                 "use_with_caution": (
                     "Unavailable for 2018–2019. From 2020 it is planned activity in permit "
                     "records, not confirmed completions."
+                ),
+            },
+            {
+                "term": "Reported net dwellings",
+                "explanation": (
+                    "Net planned dwelling impact for source records where both dwelling fields "
+                    "are available."
+                ),
+                "formula_or_rule": "Sum(new dwellings - dwellings demolished) on comparable rows",
+                "use_with_caution": (
+                    "Unavailable for 2018–2019 and incomplete from 2020 onward. It describes "
+                    "permit records, not completed housing supply."
+                ),
+            },
+            {
+                "term": "12-month rolling average",
+                "explanation": (
+                    "Average monthly activity across the current month and previous 11 calendar "
+                    "months within the active filters."
+                ),
+                "formula_or_rule": "Mean of 12 consecutive monthly values",
+                "use_with_caution": (
+                    "The first 11 filtered months are unavailable because a complete window does "
+                    "not yet exist. This is descriptive, not a forecast."
                 ),
             },
             {

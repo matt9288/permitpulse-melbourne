@@ -96,10 +96,12 @@ The map is aggregated to official municipality boundaries. It is not an address 
 Choose a **profile year** and a different **profile baseline**.
 
 - With no municipality or several municipalities selected, the dashboard shows a comparison table for the leading municipalities in the filtered data.
-- With exactly one municipality selected, it changes to a focused profile showing permit records, year comparison, total and median reported cost, new dwellings and the share of records above $10 million.
+- With exactly one municipality selected, it changes to a focused profile showing permit records, total-cost change, median reported cost, new dwellings, reported net dwellings and the share of records above $10 million.
 - The focused profile also shows the municipality's nature-of-work and building-use mix.
 
-Use record change together with absolute volume. A large percentage increase from a small baseline may still represent limited market activity. The high-value threshold is an analytical segment, not an official BPC classification.
+Use record and total-cost change together with their absolute values. A large percentage increase from a small baseline may still represent limited market activity, while cost change can be dominated by a small number of large projects and is not adjusted for inflation.
+
+**Reported net dwellings** subtracts dwellings demolished from new dwellings only for source records where both fields are available. It is unavailable for 2018–2019 and has incomplete coverage from 2020 onward, so treat it as reported planned activity rather than completed housing supply.
 
 ## 5. Monthly activity trend
 
@@ -111,9 +113,9 @@ Use record change together with absolute volume. A large percentage increase fro
 
 ### How to use the view
 
-Switch the trend measure between **Permit records** and **Reported cost**. Hover over the line to compare monthly values. Apply a municipality, activity or cost filter to see whether the pattern is statewide or associated with a particular segment.
+Switch the trend measure between **Permit records** and **Reported cost**. The chart displays the monthly series and a 12-month rolling average based on complete 12-calendar-month windows within the active filters. The first 11 months have no rolling-average value. Apply a municipality, activity or cost filter to see whether the pattern is statewide or associated with a particular segment.
 
-Treat spikes as investigation prompts rather than conclusions. A reported-cost spike may be driven by a small number of large projects, and the reporting month does not necessarily represent the construction start month.
+Treat spikes as investigation prompts rather than conclusions. A reported-cost spike may be driven by a small number of large projects, and the reporting month does not necessarily represent the construction start month. The rolling average describes the filtered history; it is not a forecast.
 
 ## 6. Location and activity mix charts
 
@@ -128,6 +130,8 @@ This row contains three views: top suburbs, official nature of work and building
 ### How to use the views
 
 Start with a region or municipality filter, then use the charts to identify the dominant suburbs and activities within that market. Add a nature-of-work or building-use filter to isolate a segment and observe how the location ranking changes.
+
+Turn on **Hide unavailable and unknown categories** to remove those labels from the three category charts only. The dashboard shows the excluded record count for each chart; headline metrics, sidebar filters and downloads remain unchanged.
 
 The top-suburb chart shows only the leading 12 suburbs. The building-use field is unavailable in the 2018 workbook, so comparisons involving 2018 must retain that limitation.
 

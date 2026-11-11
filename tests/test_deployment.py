@@ -98,6 +98,9 @@ def test_deployment_entrypoint_loads_from_repository_root() -> None:
     assert any(radio.label == "Map measure" for radio in app.radio)
     assert any(radio.label == "Cost range aggregation" for radio in app.radio)
     assert any(radio.label == "Comparison measure" for radio in app.radio)
+    assert any(
+        toggle.label == "Hide unavailable and unknown categories" for toggle in app.toggle
+    )
     assert any(selectbox.label == "Focus year" for selectbox in app.selectbox)
     assert any(selectbox.label == "Baseline year" for selectbox in app.selectbox)
     assert any(
@@ -112,9 +115,35 @@ def test_deployment_entrypoint_loads_from_repository_root() -> None:
     assert app.dataframe[1].proto.placeholder == "—"
     assert municipality_table["total_reported_cost"]["type_config"]["format"] == "$%,.0f"
     assert municipality_table["focus_records"]["type_config"]["format"] == "%,d"
+    assert municipality_table["reported_net_dwellings"]["label"] == "Reported net dwellings"
+    assert municipality_table["reported_cost_change"]["label"] == "Total cost change"
     assert cost_table["focus_median_reported_cost"]["label"] == "2025 median cost"
     assert cost_table["baseline_median_reported_cost"]["label"] == "2024 median cost"
     assert cost_table["focus_median_reported_cost"]["type_config"]["format"] == "$%,.0f"
+
+    trend_spec = json.loads(app.get("plotly_chart")[1].proto.spec)
+    assert [trace["name"] for trace in trend_spec["data"]] == [
+        "Monthly permit records",
+        "12-month rolling average",
+    ]
+
+
+def test_category_charts_can_hide_unavailable_and_unknown_records() -> None:
+    app = AppTest.from_file(PROJECT_ROOT / "app.py", default_timeout=60).run()
+
+    next(
+        toggle
+        for toggle in app.toggle
+        if toggle.label == "Hide unavailable and unknown categories"
+    ).set_value(True)
+    app.run()
+
+    assert not app.exception
+    assert any(
+        "113,287 building-use records" in caption.value
+        for caption in app.caption
+        if "Hidden from these charts only" in caption.value
+    )
 
 
 def test_cost_view_accepts_detailed_aggregation_and_non_adjacent_years() -> None:
