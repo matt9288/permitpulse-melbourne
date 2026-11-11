@@ -30,6 +30,7 @@ from permitpulse.statewide_dashboard import (
     monthly_activity,
     municipality_map_summary,
     municipality_summary,
+    optimise_dashboard_dtypes,
     unavailable_category_records,
 )
 from permitpulse.statewide_pipeline import normalise_building_use
@@ -46,10 +47,11 @@ PLOT_COLOUR = "#176B87"
 ACCENT_COLOUR = "#C56A2D"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_resource(show_spinner=False)
 def load_dashboard_inputs() -> tuple[pd.DataFrame, pd.DataFrame, dict, dict]:
     permits = load_parquet(PERMITS_PATH)
     permits["building_use"] = normalise_building_use(permits["building_use"])
+    permits = optimise_dashboard_dtypes(permits)
     quality = load_parquet(QUALITY_PATH)
     metadata = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
     boundaries = json.loads(BOUNDARIES_PATH.read_text(encoding="utf-8"))

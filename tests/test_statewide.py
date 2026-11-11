@@ -11,6 +11,7 @@ from permitpulse.statewide_dashboard import (
     monthly_activity,
     municipality_map_summary,
     municipality_summary,
+    optimise_dashboard_dtypes,
     unavailable_category_records,
 )
 from permitpulse.statewide_pipeline import (
@@ -121,6 +122,41 @@ def test_category_summary_can_hide_unknown_and_unavailable_values() -> None:
         {"building_use": "Commercial", "records": 1}
     ]
     assert unavailable_category_records(frame, "building_use") == 3
+
+
+def test_dashboard_dtype_optimisation_preserves_filter_and_summary_results() -> None:
+    frame = _records()
+    optimised = optimise_dashboard_dtypes(frame)
+
+    assert str(optimised["municipality"].dtype) == "category"
+    assert optimised["report_year"].dtype.itemsize < frame["report_year"].dtype.itemsize
+    assert category_summary(optimised, "building_use").to_dict("records") == (
+        category_summary(frame, "building_use").to_dict("records")
+    )
+
+    filtered = apply_statewide_filters(
+        optimised,
+        StatewideFilters(
+            start_date=date(2024, 1, 1),
+            end_date=date(2025, 12, 31),
+            text_query="Geelong New building",
+        ),
+    )
+    assert filtered["record_id"].tolist() == ["B", "D"]
+
+
+def test_full_scope_filter_reuses_read_only_dashboard_frame() -> None:
+    frame = optimise_dashboard_dtypes(_records())
+
+    filtered = apply_statewide_filters(
+        frame,
+        StatewideFilters(
+            start_date=date(2024, 1, 1),
+            end_date=date(2025, 12, 31),
+        ),
+    )
+
+    assert filtered is frame
 
 
 def test_statewide_cost_comparison_uses_reporting_year() -> None:

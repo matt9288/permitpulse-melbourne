@@ -14,6 +14,16 @@ UNAVAILABLE_CATEGORY_LABELS = {
     "unavailable in source year",
 }
 
+DASHBOARD_CATEGORY_COLUMNS = (
+    "municipality",
+    "municipality_map_name",
+    "region",
+    "suburb",
+    "cost_band",
+    "building_use",
+    "nature_of_work",
+)
+
 
 @dataclass(frozen=True)
 class StatewideFilters:
@@ -26,6 +36,18 @@ class StatewideFilters:
     nature_of_work: tuple[str, ...] = ()
     building_uses: tuple[str, ...] = ()
     text_query: str = ""
+
+
+def optimise_dashboard_dtypes(frame: pd.DataFrame) -> pd.DataFrame:
+    """Reduce the in-memory dashboard footprint without changing source values."""
+    optimised = frame.copy(deep=False)
+    for column in DASHBOARD_CATEGORY_COLUMNS:
+        if column in optimised:
+            optimised[column] = optimised[column].astype("category")
+    for column in ("report_year", "new_dwellings", "dwellings_demolished"):
+        if column in optimised:
+            optimised[column] = pd.to_numeric(optimised[column], downcast="integer")
+    return optimised
 
 
 def apply_statewide_filters(frame: pd.DataFrame, filters: StatewideFilters) -> pd.DataFrame:
@@ -45,15 +67,17 @@ def apply_statewide_filters(frame: pd.DataFrame, filters: StatewideFilters) -> p
     query = filters.text_query.strip()
     if query:
         searchable = (
-            frame["municipality"].fillna("")
+            frame["municipality"].astype("string").fillna("")
             + " "
-            + frame["suburb"].fillna("")
+            + frame["suburb"].astype("string").fillna("")
             + " "
-            + frame["nature_of_work"].fillna("")
+            + frame["nature_of_work"].astype("string").fillna("")
             + " "
-            + frame["building_use"].fillna("")
+            + frame["building_use"].astype("string").fillna("")
         )
         mask &= searchable.str.contains(query, case=False, regex=False)
+    if bool(mask.all()):
+        return frame
     return frame.loc[mask].copy()
 
 
@@ -127,7 +151,9 @@ def category_summary(
         if hide_unavailable
         else frame.loc[:, [column, "record_id", "estimated_cost"]]
     )
-    population = selected.assign(**{column: selected[column].fillna("Unknown")})
+    population = selected.assign(
+        **{column: selected[column].astype("string").fillna("Unknown")}
+    )
     summary = (
         population.groupby(column, as_index=False, observed=True)
         .agg(records=("record_id", "size"), reported_cost=("estimated_cost", "sum"))
