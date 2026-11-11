@@ -119,14 +119,17 @@ def category_summary(
     limit: int | None = None,
     hide_unavailable: bool = False,
 ) -> pd.DataFrame:
-    population = (
-        frame.loc[~unavailable_category_mask(frame[column])].copy()
+    selected = (
+        frame.loc[
+            ~unavailable_category_mask(frame[column]),
+            [column, "record_id", "estimated_cost"],
+        ]
         if hide_unavailable
-        else frame
+        else frame.loc[:, [column, "record_id", "estimated_cost"]]
     )
+    population = selected.assign(**{column: selected[column].fillna("Unknown")})
     summary = (
-        population.assign(**{column: population[column].fillna("Unknown")})
-        .groupby(column, as_index=False, observed=True)
+        population.groupby(column, as_index=False, observed=True)
         .agg(records=("record_id", "size"), reported_cost=("estimated_cost", "sum"))
         .sort_values(["records", column], ascending=[False, True])
     )
