@@ -4,6 +4,13 @@ PermitPulse Victoria is an open-data portfolio prototype for exploring statewide
 
 [Open the live PermitPulse Victoria dashboard](https://permitpulse-melbourne-victoria.streamlit.app/)
 
+## Dashboard demo
+
+![PermitPulse Victoria dashboard demo showing statewide hotspots, municipality filtering and reported-cost trends](docs/assets/permitpulse-dashboard-demo.gif)
+
+The demo shows how a user can identify statewide permit-activity and reported-cost hotspots, focus
+on a selected municipality, and compare local activity and cost trends.
+
 Project documentation:
 
 - [Dashboard user guide](docs/DASHBOARD_USER_GUIDE.md)
